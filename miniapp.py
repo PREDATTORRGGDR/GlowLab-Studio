@@ -56,7 +56,7 @@ def harmony_view(page, facts: dict, side: str) -> None:
     to_top(page)
 
 
-def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | None:
+def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | dict | None:
     kind, ref = scene["kind"], scene.get("ref") or ""
     metric = next((m for m in facts["metrics"] if m["key"] == ref), None)
     if kind == "hook":
@@ -67,11 +67,10 @@ def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | None:
         click(page, page.locator("button.metricLine", has_text=re.compile("^" + re.escape(name))))
         page.screenshot(path=out)
         click(page, page.locator("button[aria-label='Закрыть']"))
-    elif ref in ("harmony_front", "harmony_side", "harmony") or kind == "outro" or facts["subject"]["source"] == "star":
+    elif kind == "outro":  # "see for yourself": the metric lists scroll by, like a screen recording
+        return scroll_shot(page, facts, out)
+    elif ref in ("harmony_front", "harmony_side", "harmony") or facts["subject"]["source"] == "star":
         harmony_view(page, facts, "side" if ref == "harmony_side" else "front")
-        if kind == "outro":  # "see for yourself": the metric list
-            page.locator("button.metricLine").first.evaluate("e => e.scrollIntoView({block: 'start'})")
-            page.wait_for_timeout(400)
         page.screenshot(path=out)
     else:  # overall, rubric sections, verdict of my analysis: the overview tab
         click(page, page.locator("button:not(.tab)", has_text=re.compile("^Обзор$")))
@@ -82,6 +81,30 @@ def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | None:
             page.wait_for_timeout(400)
         page.screenshot(path=out)
     return out
+
+
+FIXED_BAR = """() => { let e = document.querySelector('button.tab');
+  while (e && getComputedStyle(e).position !== 'fixed') e = e.parentElement; return e; }"""
+
+
+def scroll_shot(page, facts: dict, out: Path) -> dict:
+    """Front and profile pages as tall images plus the bottom tab bar on its own: render.py scrolls down the front
+    metric list, then the profile one, and keeps the bar in place. y0: where each metric list starts, output px."""
+    talls, y0s = [], []
+    for side in ("front", "side"):
+        harmony_view(page, facts, side)
+        bar = page.evaluate_handle(FIXED_BAR)
+        if side == "front":
+            top = bar.evaluate("e => e ? e.getBoundingClientRect().top : innerHeight")
+            nav = out.with_name(out.stem + "_nav.png")
+            page.screenshot(path=nav, clip={"x": 0, "y": top, "width": VIEW["width"], "height": VIEW["height"] - top})
+        y0 = page.locator("button.metricLine").first.evaluate("e => e.getBoundingClientRect().top + scrollY")
+        bar.evaluate("e => e && (e.style.visibility = 'hidden')")
+        talls.append(out.with_name(f"{out.stem}_{side}.png"))
+        page.screenshot(path=talls[-1], full_page=True)
+        bar.evaluate("e => e && (e.style.visibility = '')")
+        y0s.append(max(0, int((y0 - 120) * SCALE)))
+    return {"tall": talls, "nav": nav, "y0": y0s}
 
 
 def shoot(facts: dict, scenes: list[dict], out: Path, cancelled=lambda: False) -> list[Path | None]:
@@ -101,7 +124,10 @@ def shoot(facts: dict, scenes: list[dict], out: Path, cancelled=lambda: False) -
             for n, scene in enumerate(scenes):
                 if cancelled():
                     raise RuntimeError("Отменено")
-                shots.append(scene_shot(page, facts, scene, out / f"{n:02}.png"))
+                if scene["kind"] == "outro" and shots and isinstance(shots[-1], dict):
+                    shots.append(shots[-1])  # back-to-back outros share one scroll
+                else:
+                    shots.append(scene_shot(page, facts, scene, out / f"{n:02}.png"))
             return shots
         finally:
             browser.close()

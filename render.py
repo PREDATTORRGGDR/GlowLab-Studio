@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import httpx
+from PIL import Image
 
 from data import LIB, load_settings, tool
 import frames
@@ -13,6 +14,7 @@ import frames
 FPS, W, H = 30, 1080, 1920
 GAP = 0.2            # s of silence after each line: the owner's videos are fast
 SPEED = 1.1          # ElevenLabs voice speed (0.7..1.2): the owner wants it a bit faster
+PAN = 2200           # px/s, top speed of the metric list scroll in "see for yourself"
 MUSIC, VOICE = 0.45, 1.6   # bed and voice gains before ducking
 VOICE_CACHE = LIB / "voice"
 
@@ -70,6 +72,24 @@ def scene_clip(png: Path, voice: Path, length: float, out: Path, log: Path) -> N
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", out], log)
 
 
+def outro_clip(shot: dict, voices: list[Path], out: Path, log: Path) -> None:
+    """A screen-recording look for the closing lines: the front metric list scrolls to its end, then the profile
+    one, the tab bar stays at the bottom; the closing lines play one after another over it."""
+    lens = [duration(v) + GAP for v in voices]
+    half = sum(lens) / 2
+    parts, args = [], []
+    for k, (tall, y0) in enumerate(zip(shot["tall"], shot["y0"])):
+        speed = min(PAN, max(0, Image.open(tall).height - H - y0) / half)  # reach the end of the list, not faster
+        parts.append(f"[{k}:v]crop={W}:{H}:0:'min({y0}+{speed:.1f}*t,ih-{H})',fps={FPS},trim=0:{half},setpts=PTS-STARTPTS[p{k}]")
+        args += ["-loop", "1", "-t", half, "-i", tall]
+    audio = "".join(f"[{3 + k}:a]apad,atrim=0:{n}[a{k}];" for k, n in enumerate(lens))
+    fc = (";".join(parts) + f";[p0][p1]concat=n=2:v=1:a=0[page];[page][2:v]overlay=0:H-h,format=yuv420p[v];"
+          + audio + "".join(f"[a{k}]" for k in range(len(lens))) + f"concat=n={len(lens)}:v=0:a=1[a]")
+    run([tool("ffmpeg"), "-y", *args, "-i", shot["nav"], *[x for v in voices for x in ("-i", v)],
+         "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", sum(lens),
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", out], log)
+
+
 def make(project: Path, scenes: list[dict], shots: list, edit: Path, start: float = 0, length: float = 5,
          caption: str = "", font_path=None, progress=lambda msg: None, cancelled=lambda: False) -> Path:
     if not (tool("ffmpeg") and tool("ffprobe")):
@@ -83,11 +103,16 @@ def make(project: Path, scenes: list[dict], shots: list, edit: Path, start: floa
     for n, (scene, shot) in enumerate(zip(scenes, shots)):
         if cancelled():
             raise RuntimeError("Отменено")
+        if n and isinstance(shot, dict) and shot is shots[n - 1]:
+            continue  # already in the outro clip of the previous scene
         progress(f"Озвучка и монтаж: сцена {n + 1} из {len(scenes)}")
         voice = tts(scene["voice"])
         if scene["kind"] == "hook":
             cap = frames.text_overlay(caption or scene["voice"], work / "caption.png", font_path)
             intro_clip(edit, start, max(length, duration(voice) + 0.6), cap, voice, work / f"{n:02}.mp4", log)
+        elif isinstance(shot, dict):  # this and every following scene sharing the scroll
+            group = [scene] + [s for s, sh in zip(scenes[n + 1:], shots[n + 1:]) if sh is shot]
+            outro_clip(shot, [voice] + [tts(s["voice"]) for s in group[1:]], work / f"{n:02}.mp4", log)
         elif shot:
             scene_clip(shot, voice, duration(voice) + GAP, work / f"{n:02}.mp4", log)
         else:

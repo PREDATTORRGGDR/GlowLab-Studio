@@ -123,10 +123,11 @@
   <section id="result" class="card hidden">
     <h2><b>✓</b>Готово</h2>
     <div class="result">
-      <video id="player" controls></video>
+      <video id="player" controls controlslist="nodownload"></video>
       <div>
         <div id="meta" class="note"></div>
-        <div class="row" style="margin-top:0"><button class="ghost" onclick="api().reveal(state.result.path)">Показать в папке</button>
+        <div class="row" style="margin-top:0"><button class="ghost" style="background:var(--y);color:#111;border-color:var(--y)" onclick="download()">Скачать</button>
+          <button class="ghost" onclick="api().reveal(state.result.path)">Показать в папке</button>
           <button class="ghost" onclick="window.scrollTo({top:0, behavior:'smooth'})">Сделать ещё</button></div>
         <h2 style="margin:22px 0 10px">Текст сцен</h2>
         <div class="note">Поправь реплику или убери сцену крестиком. Пересобирается только голос и монтаж, экраны те же.</div>
@@ -232,6 +233,11 @@ async function make() {
   for (const k of ["start", "length", "font"]) store.set(k, $("#" + k).value);
   await api().make({ ...sel, start: $("#start").value, length: $("#length").value, caption: $("#caption").value.trim(), font: $("#font").value });
   watch();
+}
+
+async function download() {
+  const saved = await api().save_video(state.result.path);
+  if (saved) $("#meta").textContent = `Сохранено: ${saved}`;
 }
 
 async function rerender() {

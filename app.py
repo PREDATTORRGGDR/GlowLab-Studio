@@ -129,6 +129,17 @@ class Api:
     def reveal(self, path: str) -> None:
         subprocess.Popen(["explorer", "/select,", str(Path(path))])
 
+    def save_video(self, path: str) -> str:
+        """WebView2 inside pywebview cannot download from the player, so the copy goes through a save dialog."""
+        name = f"{Path(path).parent.name}.mp4"
+        target = webview.windows[0].create_file_dialog(webview.FileDialog.SAVE, save_filename=name,
+                                                       file_types=("Видео (*.mp4)",))
+        target = target[0] if isinstance(target, (list, tuple)) else target
+        if not target:
+            return ""
+        shutil.copy2(path, target)
+        return str(target)
+
     def _start(self, fn, arg) -> None:
         if self.job["running"]:
             return
@@ -181,8 +192,7 @@ class Api:
                             float(o.get("length") or 5), o.get("caption", ""), LIB / "fonts" / (o.get("font") or "Oswald.ttf"),
                             lambda d: self._progress(2, d), lambda: self.stop)
         (last["proj"] / "project.json").write_text(json.dumps(
-            {"options": o, "scenes": last["scenes"], "shots": [str(p) if p else None for p in last["shots"]]},
-            ensure_ascii=False, indent=1), "utf-8")
+            {"options": o, "scenes": last["scenes"], "shots": last["shots"]}, ensure_ascii=False, indent=1, default=str), "utf-8")
         self.job["result"] = {"path": str(final), "url": url(final) + f"?v={time.time():.0f}",
                               "seconds": round(render.duration(final), 1), "problems": last["problems"],
                               "scenes": [{"i": i, "kind": x["kind"], "voice": x["voice"]} for i, x in enumerate(last["scenes"])]}
