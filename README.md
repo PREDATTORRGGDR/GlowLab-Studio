@@ -36,7 +36,7 @@ python app.py
 |---|---|
 | Ключ ElevenLabs, voice_id | Озвучка |
 | Ключ Anthropic (необязательно), модель | Сценарий |
-| API_BASE, токен бота, Telegram id, first_name, username | Вход в GlowLab, чтобы получить твои анализы (только чтение) |
+| API_BASE, токен бота, Telegram id, first_name, last_name, username | Вход в GlowLab, чтобы получить твои анализы (только чтение). Имя, фамилия и username точно как в Telegram: сервер обновляет ими профиль |
 
 ## Сборка exe
 

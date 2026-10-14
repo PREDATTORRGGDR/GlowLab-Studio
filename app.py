@@ -13,7 +13,7 @@ SECRETS = ("anthropic_key", "elevenlabs_key", "bot_token")
 DEFAULTS = {
     "anthropic_key": "", "claude_model": "claude-sonnet-5-5",
     "elevenlabs_key": "", "voice_id": "", "lang": "ru",
-    "api_base": "", "bot_token": "", "owner_user_id": "", "first_name": "", "username": "",
+    "api_base": "", "bot_token": "", "owner_user_id": "", "first_name": "", "last_name": "", "username": "",
 }
 
 for d in ("edits", "fonts", "music", "stars", "analyses"):
