@@ -61,7 +61,7 @@ def star_index() -> list[dict]:
 
 def star_search(q: str = "") -> list[dict]:
     q = q.strip().lower()
-    return [s for s in star_index() if q in s["name"].lower()][:40]
+    return [s for s in star_index() if q in s["name"].lower()]
 
 
 def star_facts(slug: str, lang: str = "ru") -> dict:

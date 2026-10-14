@@ -17,6 +17,12 @@ def test_script_check_catches_invented_numbers():
     assert script.check(f, [bad]) == ["сцена 1: число 123.4 не из фактов"] and bad["highlight"] == []
 
 
+def test_hashtags_cleaned_by_code():
+    tags, problems = script.clean_tags(["#Drake", "дрейк", "#drake", "#face rate!", "#", "#луксмаксинг"])
+    assert tags == ["#drake", "#дрейк", "#facerate", "#луксмаксинг"] and problems == ["хэштегов 4, нужно 8..12"]
+    assert script.clean_tags([f"#t{i}" for i in range(15)]) == ([f"#t{i}" for i in range(12)], [])
+
+
 def test_init_data_passes_server_check():
     # Mirror of api._verify_telegram_init_data in the bot, line for line.
     token = "123456:TEST"
@@ -34,6 +40,9 @@ def test_media_server_only_serves_library_and_projects():
     assert httpx.get(base + "/settings.json").status_code == 404
     assert httpx.get(base + "/library/../settings.json").status_code == 404
     assert httpx.get(base + "/library/stars/index.json").status_code == 200
+    r = httpx.get(base + "/library/stars/index.json", headers={"Range": "bytes=1-4"})  # the edit timeline seeks with Range
+    assert r.status_code == 206 and r.content == (data.STARS / "index.json").read_bytes()[1:5]
+    assert httpx.get(base + "/settings.json", headers={"Range": "bytes=0-"}).status_code == 404
 
 
 def test_closed_analysis_is_refused(tmp_path, monkeypatch):

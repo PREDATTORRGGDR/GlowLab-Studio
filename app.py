@@ -1,12 +1,15 @@
 import ctypes
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
 import time
 import traceback
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from ctypes import wintypes
 from pathlib import Path
 from urllib.parse import quote
 
@@ -20,6 +23,7 @@ import script
 from data import BUNDLE, DEFAULTS, LIB, PROJECTS, SECRETS, SETTINGS, load_settings, tool
 
 UI = BUNDLE / "ui" / "index.html"
+PER_VIDEO = 400  # ElevenLabs characters in one video, about
 
 
 class Media(SimpleHTTPRequestHandler):
@@ -31,7 +35,26 @@ class Media(SimpleHTTPRequestHandler):
     def send_head(self):  # both GET and HEAD go through here
         if self.path.lstrip("/").split("/", 1)[0] not in ("library", "projects"):
             return self.send_error(404)
-        return super().send_head()
+        # Range: without it the player cannot seek in an edit (timeline of the edit preview)
+        rng, path = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range", "")), self.translate_path(self.path)
+        if not rng or not os.path.isfile(path):
+            return super().send_head()
+        f = open(path, "rb")
+        size = os.fstat(f.fileno()).st_size
+        a, b = int(rng[1]), min(int(rng[2] or size - 1), size - 1)
+        if a >= size:
+            f.close()
+            return self.send_error(416)
+        self.send_response(206)
+        for k, v in (("Content-Type", self.guess_type(path)), ("Content-Range", f"bytes {a}-{b}/{size}"),
+                     ("Content-Length", str(b - a + 1)), ("Accept-Ranges", "bytes")):
+            self.send_header(k, v)
+        self.end_headers()
+        f.seek(a)
+        if b == size - 1:
+            return f  # open-ended range, the usual one: stream to the end
+        with f:
+            return io.BytesIO(f.read(b - a + 1))
 
     def log_message(self, *a):
         pass
@@ -77,6 +100,18 @@ class Api:
         except Exception:
             return []
 
+    def eleven(self) -> dict:
+        """Characters left on ElevenLabs. Empty when there is no key or no network: the header shows just the name."""
+        key = load_settings()["elevenlabs_key"]
+        if not key:
+            return {}
+        try:
+            r = httpx.get("https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key}, timeout=10).json()
+            left = r["character_limit"] - r["character_count"]
+            return {"left": left, "limit": r["character_limit"], "tier": r.get("tier", ""), "videos": left // PER_VIDEO}
+        except Exception:
+            return {}
+
     def status(self) -> dict:
         try:
             claude = bool(script.claude_exe())
@@ -95,6 +130,12 @@ class Api:
                                                        file_types=("Видео (*.mp4;*.mov;*.webm)",))
         for p in picked or []:
             shutil.copy2(p, LIB / "edits" / Path(p).name)
+        return self.edits()
+
+    def delete_edit(self, name: str) -> list[dict]:
+        p = LIB / "edits" / Path(name).name  # only a file name: nothing outside library\edits
+        if p.is_file():
+            to_trash(p)
         return self.edits()
 
     def stars(self, q: str = "") -> list[dict]:
@@ -119,6 +160,9 @@ class Api:
 
     def rerender(self, lines: list[dict]) -> None:
         self._start(self._rerender, lines)
+
+    def change(self, request: str) -> None:
+        self._start(self._change, request.strip())
 
     def cancel(self) -> None:
         self.stop = True
@@ -169,10 +213,36 @@ class Api:
         facts = data.star_facts(o["slug"], s["lang"]) if star else data.my_facts(int(o["analysis_id"]), s["lang"])
         proj = PROJECTS / f"{o['slug'] if star else 'me'}-{time.strftime('%Y%m%d-%H%M%S')}"
         self._progress(0, "Claude пишет текст по цифрам")
-        scenes, problems = script.write(facts, s["lang"], s["claude_model"])
+        scenes, tags, problems = script.write(facts, s["lang"], s["claude_model"])
         self._progress(1, "Открываю Mini App и снимаю карточки")
         shots = miniapp.shoot(facts, scenes, proj / "shots", lambda: self.stop)
-        self.last = {"proj": proj, "scenes": scenes, "shots": shots, "o": o, "problems": problems}
+        self.last = {"proj": proj, "facts": facts, "scenes": scenes, "shots": shots, "tags": tags, "asks": [], "o": o,
+                     "problems": problems, "reshot": 0}
+        self._render()
+
+    def _change(self, request: str) -> None:
+        """The owner asks Claude in their own words; the whole script comes back. Screens are reused by kind + ref,
+        only scenes without one are shot; the voice cache re-voices only changed lines."""
+        last, s = self.last, load_settings()
+        if not last:
+            raise RuntimeError("Сначала сделай ролик")
+        if not request:
+            raise RuntimeError("Напиши, что поменять")
+        self._progress(0, "Claude правит сценарий")
+        scenes, tags, problems = script.write(last["facts"], s["lang"], s["claude_model"],
+                                              {"scenes": last["scenes"], "hashtags": last["tags"]}, request)
+        key = lambda x: (x["kind"], x.get("ref") or "")
+        old = {key(x): sh for x, sh in zip(last["scenes"], last["shots"])}
+        missing = [i for i, x in enumerate(scenes) if key(x) not in old]
+        shots = [old.get(key(x)) for x in scenes]
+        self._progress(1, f"Доснимаю экраны: {len(missing)}" if missing else "Экраны те же")
+        if missing:
+            new = miniapp.shoot(last["facts"], [scenes[i] for i in missing],
+                                last["proj"] / "shots" / time.strftime("%H%M%S"), lambda: self.stop)
+            for i, sh in zip(missing, new):
+                shots[i] = sh
+        last.update(scenes=scenes, shots=shots, tags=tags, problems=problems, reshot=len(missing),
+                    asks=last["asks"] + [request])
         self._render()
 
     def _rerender(self, lines: list[dict]) -> None:
@@ -192,9 +262,10 @@ class Api:
                             float(o.get("length") or 5), o.get("caption", ""), LIB / "fonts" / (o.get("font") or "Oswald.ttf"),
                             lambda d: self._progress(2, d), lambda: self.stop)
         (last["proj"] / "project.json").write_text(json.dumps(
-            {"options": o, "scenes": last["scenes"], "shots": last["shots"]}, ensure_ascii=False, indent=1, default=str), "utf-8")
+            {"options": o, "scenes": last["scenes"], "shots": last["shots"], "hashtags": last["tags"], "asks": last["asks"]}, ensure_ascii=False, indent=1, default=str), "utf-8")
         self.job["result"] = {"path": str(final), "url": url(final) + f"?v={time.time():.0f}",
                               "seconds": round(render.duration(final), 1), "problems": last["problems"],
+                              "tags": last["tags"], "asks": last["asks"], "reshot": last["reshot"],
                               "scenes": [{"i": i, "kind": x["kind"], "voice": x["voice"]} for i, x in enumerate(last["scenes"])]}
 
 
@@ -204,6 +275,19 @@ def human(e: Exception) -> str:
     if isinstance(e, httpx.HTTPError):
         return "Нет связи с сервером, проверь интернет и API_BASE"
     return f"Что-то пошло не так: {e}. Подробности в projects\\app.log"
+
+
+class SHFILEOPSTRUCTW(ctypes.Structure):
+    _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL), ("hNameMappings", ctypes.c_void_p),
+                ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+
+def to_trash(p: Path) -> None:
+    """Into the Windows Recycle Bin, so a misclick can be undone. pFrom is double-null terminated."""
+    op = SHFILEOPSTRUCTW(wFunc=3, pFrom=str(p.resolve()) + "\0", fFlags=0x40 | 0x10 | 0x4 | 0x400)  # DELETE; ALLOWUNDO, NOCONFIRMATION, SILENT, NOERRORUI
+    if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)):
+        raise RuntimeError(f"Не удалось убрать {p.name} в Корзину")
 
 
 def dark_title(window) -> None:

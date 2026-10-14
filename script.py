@@ -13,8 +13,9 @@ from data import section_score
 LANG_NAMES = {"ru": "русский", "en": "English", "uk": "українська"}
 KINDS = ["hook", "section", "metric", "verdict", "outro"]
 SCHEMA = {
-    "type": "object", "required": ["scenes"],
-    "properties": {"scenes": {"type": "array", "minItems": 6, "maxItems": 20, "items": {
+    "type": "object", "required": ["scenes", "hashtags"],
+    "properties": {"hashtags": {"type": "array", "minItems": 8, "maxItems": 12, "items": {"type": "string"}},
+                   "scenes": {"type": "array", "minItems": 6, "maxItems": 20, "items": {
         "type": "object", "required": ["kind", "ref", "title", "voice", "highlight"],
         "properties": {
             "kind": {"type": "string", "enum": KINDS},
@@ -50,7 +51,17 @@ SYSTEM = """Ты сценарист коротких вертикальных р
 6. title: подпись на экране, до 4 слов, без цифр. Для метрики это её название.
 7. highlight: обычно пустой список.
 8. Никаких медицинских советов, процедур и препаратов.
-9. Язык всех title и voice: {lang}."""
+9. Язык всех title и voice: {lang}.
+
+Хэштеги для TikTok (hashtags): 8..12 штук, каждый с #, слитно, только буквы и цифры. Состав:
+1. Имя человека латиницей слитно и по-русски: #drake #дрейк, #meganfox #меганфокс. Если subject.source = "me" (мой анализ, имени нет), этой группы нет.
+2. Если человек известен эдитами, фанатские теги: #meganfoxedits #meganfoxprime.
+3. Ниша: #луксмаксинг #facerate #mog #могг #looks #оценкавнешности, по смыслу ролика можно #mogger #height #primal.
+4. Охват: #fyp #pourtoi #foryoupage #edit #viral.
+Наборы, которые залетают у владельца, равняйся на них:
+#pourtoi #fyp #edit #foryoupage #drake #дрейк #looks #луксмаксинг #facerate #могг #mog
+#edit #viral #fyp #meganfoxprime #меганфокс #meganfoxedits #facerate #луксмаксинг
+#tylermaher #edit #mog #height #mogger #оценкавнешности #primal"""
 
 
 def claude_exe() -> str:
@@ -128,11 +139,34 @@ def check(facts: dict, scenes: list[dict]) -> list[str]:
     return problems
 
 
-def write(facts: dict, lang: str = "ru", model: str = "claude-sonnet-5-5") -> tuple[list[dict], list[str]]:
+def clean_tags(raw: list[str]) -> tuple[list[str], list[str]]:
+    """Hashtags checked by code, not trusted to the model: letters (latin, cyrillic) and digits only, no repeats."""
+    out = []
+    for t in raw:
+        t = "#" + re.sub(r"[^0-9a-zа-яёіїєґ]", "", t.lower())
+        if len(t) > 1 and t not in out:
+            out.append(t)
+    return out[:12], ([f"хэштегов {len(out)}, нужно 8..12"] if len(out) < 8 else [])
+
+
+def write(facts: dict, lang: str = "ru", model: str = "claude-sonnet-5-5", current: dict | None = None,
+          request: str = "") -> tuple[list[dict], list[str], list[str]]:
+    """The script and hashtags. With current (scenes + hashtags of the made video) and the owner's request,
+    the whole script comes back with that change."""
     prompt = "Факты:\n" + json.dumps(brief(facts), ensure_ascii=False)
-    scenes = ask(prompt, lang, model)["scenes"]
-    problems = check(facts, scenes)
+    if current:
+        now = {"scenes": [{k: x[k] for k in ("kind", "ref", "title", "voice")} for x in current["scenes"]],
+               "hashtags": current["hashtags"]}
+        prompt += ("\n\nТекущий сценарий ролика:\n" + json.dumps(now, ensure_ascii=False) + "\n\nПросьба владельца: " + request
+                   + "\nВерни весь сценарий целиком с этой правкой, остальное оставь как было. Хэштеги обнови, если правка их касается."
+                   " Если просьбу нельзя выполнить по фактам, сделай ближайшее, что можно по фактам.")
+
+    def once(p):
+        out = ask(p, lang, model)
+        tags, bad = clean_tags(out["hashtags"])
+        return out["scenes"], tags, check(facts, out["scenes"]) + bad
+
+    scenes, tags, problems = once(prompt)
     if problems:  # one retry with the exact complaints, then hand the rest to the UI as warnings
-        scenes = ask(prompt + "\n\nПрошлый вариант отклонён:\n" + "\n".join(problems) + "\nИсправь.", lang, model)["scenes"]
-        problems = check(facts, scenes)
-    return scenes, problems
+        scenes, tags, problems = once(prompt + "\n\nПрошлый вариант отклонён:\n" + "\n".join(problems) + "\nИсправь.")
+    return scenes, tags, problems

@@ -104,7 +104,7 @@ def make(project: Path, scenes: list[dict], shots: list, edit: Path, start: floa
     for n, (scene, shot) in enumerate(zip(scenes, shots)):
         if cancelled():
             raise RuntimeError("Отменено")
-        if n and isinstance(shot, dict) and shot is shots[n - 1]:
+        if n and isinstance(shot, dict) and shot == shots[n - 1]:
             continue  # already in the outro clip of the previous scene
         progress(f"Озвучка и монтаж: сцена {n + 1} из {len(scenes)}")
         voice = tts(scene["voice"])
@@ -112,7 +112,7 @@ def make(project: Path, scenes: list[dict], shots: list, edit: Path, start: floa
             cap = frames.text_overlay(caption or scene["voice"], work / "caption.png", font_path)
             intro_clip(edit, start, max(length, duration(voice) + 0.6), cap, voice, work / f"{n:02}.mp4", log)
         elif isinstance(shot, dict):  # this and every following scene sharing the scroll
-            group = [scene] + [s for s, sh in zip(scenes[n + 1:], shots[n + 1:]) if sh is shot]
+            group = [scene] + [s for s, sh in zip(scenes[n + 1:], shots[n + 1:]) if sh == shot]  # ==, not is: shots read back from project.json are new objects
             outro_clip(shot, [voice] + [tts(s["voice"]) for s in group[1:]], work / f"{n:02}.mp4", log)
         elif shot:
             scene_clip(shot, voice, duration(voice) + GAP, work / f"{n:02}.mp4", log)
