@@ -1,0 +1,107 @@
+"""ElevenLabs + ffmpeg: scenes -> final.mp4.
+Template: the edit's first seconds with the caption and the hook voiced over them, then the Mini App screens one per
+scene, each as long as its voice line; the edit's audio is the music bed, looped for the whole video and ducked under the voice."""
+import hashlib
+import subprocess
+from pathlib import Path
+
+import httpx
+
+from app import LIB, load_settings, tool
+import frames
+
+FPS, W, H = 30, 1080, 1920
+GAP = 0.2            # s of silence after each line: the owner's videos are fast
+ZOOM = 0.04          # slow push-in over a scene: 1.00 -> 1.04
+MUSIC, VOICE = 0.45, 1.6   # bed and voice gains before ducking
+VOICE_CACHE = LIB / "voice"
+
+
+def run(args: list, log: Path) -> None:
+    r = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    with log.open("a", encoding="utf-8") as f:
+        f.write(" ".join(map(str, args)) + "\n" + r.stderr + "\n")
+    if r.returncode:
+        raise RuntimeError("ffmpeg не справился:\n" + "\n".join(r.stderr.strip().splitlines()[-5:]))
+
+
+def duration(path: Path) -> float:
+    out = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    return float(out.strip())
+
+
+def tts(text: str) -> Path:
+    """One ElevenLabs request per line, cached by hash of voice + text: an edit of one line re-voices only that line."""
+    s = load_settings()
+    if not s["elevenlabs_key"] or not s["voice_id"]:
+        raise RuntimeError("Не хватает ключа ElevenLabs или голоса в настройках")
+    path = VOICE_CACHE / (hashlib.sha1(f"{s['voice_id']}|{text}".encode()).hexdigest()[:16] + ".mp3")
+    if not path.exists():
+        r = httpx.post(f"https://api.elevenlabs.io/v1/text-to-speech/{s['voice_id']}", timeout=120,
+                       headers={"xi-api-key": s["elevenlabs_key"]},
+                       json={"text": text, "model_id": "eleven_multilingual_v2"})
+        if r.status_code == 401:
+            raise RuntimeError("ElevenLabs не принял ключ")
+        if r.status_code >= 400:
+            raise RuntimeError(f"ElevenLabs ответил {r.status_code}: {r.text[:200]}")
+        VOICE_CACHE.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(r.content)
+    return path
+
+
+def intro_clip(edit: Path, start: float, length: float, caption: Path, voice: Path, out: Path, log: Path) -> None:
+    """Edit fitted to the width on black, caption on top, the hook line from 0.3 s. Its own sound comes back as the bed."""
+    vf = (f"[0:v]fps={FPS},scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1[e];"
+          f"[e][1:v]overlay=0:0,format=yuv420p[v];[2:a]adelay=300|300,apad,atrim=0:{length}[a]")
+    run([tool("ffmpeg"), "-y", "-ss", start, "-t", length, "-i", edit, "-i", caption, "-i", voice,
+         "-filter_complex", vf, "-map", "[v]", "-map", "[a]", "-t", length,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", out], log)
+
+
+def scene_clip(png: Path, voice: Path, length: float, out: Path, log: Path) -> None:
+    vf = (f"[0:v]scale=w='{W}*(1+{ZOOM}*t/{length})':h=-2:eval=frame,crop={W}:{H},fps={FPS},format=yuv420p[v];"
+          f"[1:a]apad,atrim=0:{length}[a]")
+    run([tool("ffmpeg"), "-y", "-loop", "1", "-t", length, "-i", png, "-i", voice,
+         "-filter_complex", vf, "-map", "[v]", "-map", "[a]", "-t", length,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", out], log)
+
+
+def make(project: Path, scenes: list[dict], shots: list, edit: Path, start: float = 0, length: float = 5,
+         caption: str = "", font_path=None, progress=lambda msg: None, cancelled=lambda: False) -> Path:
+    if not (tool("ffmpeg") and tool("ffprobe")):
+        raise RuntimeError("ffmpeg не найден: положи ffmpeg.exe и ffprobe.exe в папку bin")
+    work = project / "clips"
+    work.mkdir(parents=True, exist_ok=True)
+    log = project / "ffmpeg.log"
+    log.write_text("", "utf-8")
+
+    clips = []
+    for n, (scene, shot) in enumerate(zip(scenes, shots)):
+        if cancelled():
+            raise RuntimeError("Отменено")
+        progress(f"Озвучка и монтаж: сцена {n + 1} из {len(scenes)}")
+        voice = tts(scene["voice"])
+        if scene["kind"] == "hook":
+            cap = frames.text_overlay(caption or scene["voice"], work / "caption.png", font_path)
+            intro_clip(edit, start, max(length, duration(voice) + 0.6), cap, voice, work / f"{n:02}.mp4", log)
+        elif shot:
+            scene_clip(shot, voice, duration(voice) + GAP, work / f"{n:02}.mp4", log)
+        else:
+            continue
+        clips.append(work / f"{n:02}.mp4")
+
+    progress("Склейка и музыка")
+    (work / "list.txt").write_text("".join(f"file '{c.name}'\n" for c in clips), "utf-8")
+    run([tool("ffmpeg"), "-y", "-f", "concat", "-safe", "0", "-i", work / "list.txt", "-c", "copy", work / "body.mp4"], log)
+    total = duration(work / "body.mp4")
+    # The bed: the edit's own track from its start, looped; it ducks whenever the voice speaks (sidechain).
+    mix = (f"[1:a]atrim=0:{total},volume={MUSIC}[m];[0:a]volume={VOICE},asplit[v][key];"
+           f"[m][key]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[duck];"
+           f"[v][duck]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-14:TP=-1.5:LRA=11[a]")
+    final = project / "final.mp4"
+    run([tool("ffmpeg"), "-y", "-i", work / "body.mp4", "-stream_loop", "-1", "-ss", start, "-i", edit,
+         "-filter_complex", mix, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+         "-ar", "44100", "-movflags", "+faststart", "-t", total, final], log)
+    return final
