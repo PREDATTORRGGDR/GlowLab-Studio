@@ -11,7 +11,7 @@ from PIL import Image
 from data import LIB, load_settings, tool
 import frames
 
-FPS, W, H = 30, 1080, 1920
+FPS, W, H = 60, 1080, 1920  # 60: the list scroll must be smooth, and every clip shares one rate for concat
 GAP = 0.2            # s of silence after each line: the owner's videos are fast
 SPEED = 1.1          # ElevenLabs voice speed (0.7..1.2): the owner wants it a bit faster
 PAN = 2200           # px/s, top speed of the metric list scroll in "see for yourself"
@@ -79,9 +79,10 @@ def outro_clip(shot: dict, voices: list[Path], out: Path, log: Path) -> None:
     half = sum(lens) / 2
     parts, args = [], []
     for k, (tall, y0) in enumerate(zip(shot["tall"], shot["y0"])):
-        speed = min(PAN, max(0, Image.open(tall).height - H - y0) / half)  # reach the end of the list, not faster
-        parts.append(f"[{k}:v]crop={W}:{H}:0:'min({y0}+{speed:.1f}*t,ih-{H})',fps={FPS},trim=0:{half},setpts=PTS-STARTPTS[p{k}]")
-        args += ["-loop", "1", "-t", half, "-i", tall]
+        dist = min(PAN * half, max(0, Image.open(tall).height - H - y0))  # to the end of the list, not faster than PAN
+        ease = f"(3*pow(t/{half:.3f},2)-2*pow(t/{half:.3f},3))"  # smoothstep: speeds up, glides, slows down at the end
+        parts.append(f"[{k}:v]fps={FPS},crop={W}:{H}:0:'{y0}+{dist:.0f}*{ease}',trim=0:{half},setpts=PTS-STARTPTS[p{k}]")
+        args += ["-loop", "1", "-framerate", FPS, "-t", half, "-i", tall]
     audio = "".join(f"[{3 + k}:a]apad,atrim=0:{n}[a{k}];" for k, n in enumerate(lens))
     fc = (";".join(parts) + f";[p0][p1]concat=n=2:v=1:a=0[page];[page][2:v]overlay=0:H-h,format=yuv420p[v];"
           + audio + "".join(f"[a{k}]" for k in range(len(lens))) + f"concat=n={len(lens)}:v=0:a=1[a]")
