@@ -68,12 +68,29 @@
   .detail { color:var(--mute); font-size:13px; margin:12px 0 0 36px; min-height:18px; }
   .err { background:rgba(255,107,92,.1); border:1px solid rgba(255,107,92,.4); color:#ffb3a9; border-radius:14px; padding:12px 16px; white-space:pre-wrap; }
   .result { display:grid; grid-template-columns:300px 1fr; gap:22px; align-items:start; }
-  .result video { width:300px; aspect-ratio:9/16; border-radius:18px; background:#000; }
-  .scene { display:flex; gap:10px; align-items:flex-start; margin-bottom:8px; }
-  .scene small { width:62px; flex:none; color:var(--mute); padding-top:10px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; }
-  .scene textarea { flex:1; resize:vertical; min-height:42px; background:#0f0f11; border:1px solid var(--line); border-radius:10px; padding:9px 11px; outline:none; }
+  .pl { position:relative; width:300px; aspect-ratio:9/16; border-radius:18px; overflow:hidden; background:#000; }
+  .pl video { width:100%; height:100%; display:block; cursor:pointer; }
+  .plBig { position:absolute; inset:0; margin:auto; width:72px; height:72px; border-radius:50%; border:0; background:var(--y); color:#111;
+           display:grid; place-items:center; padding-left:4px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:opacity .2s; }
+  .pl.playing .plBig { opacity:0; pointer-events:none; }
+  .plBar { position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:8px; padding:26px 10px 10px;
+           background:linear-gradient(transparent, rgba(0,0,0,.8)); font-size:12px; font-variant-numeric:tabular-nums; transition:opacity .2s; }
+  .pl.playing:not(:hover) .plBar { opacity:0; }
+  .plBar button { border:0; background:none; color:#fff; padding:4px; display:grid; place-items:center; }
+  .plBar button:hover { color:var(--y); }
+  .plSeek { flex:1; height:16px; position:relative; cursor:pointer; touch-action:none; }
+  .plSeek::before, .plSeek i { content:""; position:absolute; left:0; top:6px; height:4px; border-radius:4px; }
+  .plSeek::before { right:0; background:rgba(255,255,255,.25); }
+  .plSeek i { width:0; background:var(--y); }
+  .plSeek i::after { content:""; position:absolute; right:-6px; top:-4px; width:12px; height:12px; border-radius:50%; background:var(--y); }
+  .pl .i-pause, .pl.playing .i-play, .pl .i-x, .pl.muted .i-wave { display:none; }
+  .pl.playing .i-pause, .pl.muted .i-x { display:inline; }
+  .acts { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-top:10px; } .acts button { padding:9px 4px; font-size:13.5px; }
+  .scene { display:grid; grid-template-columns:58px 1fr 26px; gap:6px; align-items:center; margin-bottom:4px; }
+  .scene small { color:var(--mute); font-size:11px; }
+  .scene textarea { field-sizing:content; width:100%; resize:none; overflow:hidden; background:#0f0f11; border:1px solid var(--line); border-radius:9px; padding:6px 10px; outline:none; line-height:1.35; }
   .scene textarea:focus { border-color:var(--y); }
-  .scene button { border:0; background:none; color:var(--mute); font-size:18px; padding:8px; }
+  .scene button { border:0; background:none; color:var(--mute); font-size:17px; padding:2px; }
   .scene button:hover { color:var(--bad); }
   .hidden { display:none !important; }
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:22px; padding:24px; width:min(560px, 92vw); }
@@ -135,24 +152,36 @@
   <section id="result" class="card hidden">
     <h2><b>✓</b>Готово</h2>
     <div class="result">
-      <video id="player" controls controlslist="nodownload"></video>
       <div>
-        <div id="meta" class="note" style="white-space:pre-line"></div>
-        <div class="row" style="margin-top:0"><button class="ghost" style="background:var(--y);color:#111;border-color:var(--y)" onclick="download()">Скачать</button>
-          <button class="ghost" onclick="api().reveal(state.result.path)">Показать в папке</button>
-          <button class="ghost" onclick="window.scrollTo({top:0, behavior:'smooth'})">Сделать ещё</button></div>
+        <div id="pl" class="pl">
+          <video id="player" playsinline></video>
+          <button id="plBig" class="plBig" title="Смотреть"><svg width="34" height="34" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></button>
+          <div class="plBar">
+            <button id="plPlay" title="Пуск/пауза"><svg class="i-play" width="18" height="18" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><svg class="i-pause" width="18" height="18" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg></button>
+            <div id="plSeek" class="plSeek"><i></i></div>
+            <span id="plTime">0:00 / 0:00</span>
+            <button id="plMute" title="Звук"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" stroke="none"/><path class="i-wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="i-x" d="M16 9l5 6M21 9l-5 6"/></svg></button>
+          </div>
+        </div>
+        <div id="meta" class="note" style="white-space:pre-line;margin:12px 0 0"></div>
+        <div class="acts"><button class="ghost" style="background:var(--y);color:#111;border-color:var(--y)" onclick="download()">Скачать</button>
+          <button class="ghost" title="Показать в папке" onclick="api().reveal(state.result.path)">В папке</button>
+          <button class="ghost" onclick="window.scrollTo({top:0, behavior:'smooth'})">Ещё ролик</button></div>
         <h2 style="margin:22px 0 10px">Хэштеги</h2>
-        <div class="row" style="margin-top:0;align-items:center"><div id="tags" class="tags"></div><button class="ghost" id="copyBtn" onclick="copyTags()">Скопировать</button></div>
-        <h2 style="margin:22px 0 10px">Текст сцен</h2>
+        <div id="tags" class="tags"></div>
+        <button class="ghost" id="copyBtn" style="margin-top:8px" onclick="copyTags()">Скопировать</button>
+      </div>
+      <div>
+        <h2 style="margin:0 0 10px">Текст сцен</h2>
         <div class="note">Поправь реплику или убери сцену крестиком. Пересобирается только голос и монтаж, экраны те же.</div>
         <div id="scenes"></div>
         <button class="ghost" onclick="rerender()">Пересобрать с правками</button>
+        <h2 style="margin:26px 0 10px">Попросить Claude</h2>
+        <div id="asks" class="chat"></div>
+        <div class="row" style="margin-top:0"><input id="ask" class="field" style="flex:1" placeholder="Например: сделай короче, начни с плюсов, убери про губы"
+          onkeydown="if (event.key === 'Enter') sendAsk()"><button class="ghost" id="askBtn" onclick="sendAsk()">Отправить</button></div>
       </div>
     </div>
-    <h2 style="margin:26px 0 10px">Попросить Claude</h2>
-    <div id="asks" class="chat"></div>
-    <div class="row" style="margin-top:0"><input id="ask" class="field" style="flex:1" placeholder="Например: сделай короче, начни с плюсов, убери про губы"
-      onkeydown="if (event.key === 'Enter') sendAsk()"><button class="ghost" id="askBtn" onclick="sendAsk()">Отправить</button></div>
   </section>
 </main>
 
@@ -403,10 +432,29 @@ function showResult(r) {
   $("#tags").textContent = (r.tags || []).join(" ");
   $("#asks").innerHTML = (r.asks || []).map(a => `<div>${esc(a)}</div>`).join("");
   $("#ask").value = "";
-  $("#scenes").innerHTML = r.scenes.map(s => `<div class="scene" data-i="${s.i}"><small>${esc(s.kind)}</small>
+  $("#scenes").innerHTML = r.scenes.map(s => `<div class="scene" data-i="${s.i}"><small>${KIND[s.kind] || esc(s.kind)}</small>
     <textarea rows="1">${esc(s.voice)}</textarea><button title="Убрать сцену" onclick="this.parentElement.remove()">×</button></div>`).join("");
   $("#result").scrollIntoView({ behavior: "smooth" });
 }
+const KIND = { hook: "хук", section: "раздел", metric: "метрика", verdict: "вердикт", outro: "финал" };
+
+// ---------- the player: own controls instead of the WebView2 ones ----------
+const pv = $("#player"), fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const plToggle = () => pv.paused ? pv.play() : pv.pause();
+function plDraw() {
+  const d = pv.duration || 0;
+  $("#plSeek i").style.width = d ? pv.currentTime / d * 100 + "%" : 0;
+  $("#plTime").textContent = `${fmt(pv.currentTime)} / ${fmt(d)}`;
+  if (!pv.paused) requestAnimationFrame(plDraw);  // smooth bar while playing
+}
+for (const el of [pv, $("#plBig"), $("#plPlay")]) el.addEventListener("click", plToggle);
+pv.addEventListener("play", () => { $("#pl").classList.add("playing"); plDraw(); });
+pv.addEventListener("pause", () => $("#pl").classList.remove("playing"));
+for (const ev of ["loadedmetadata", "seeked", "emptied"]) pv.addEventListener(ev, plDraw);
+$("#plMute").addEventListener("click", () => { pv.muted = !pv.muted; $("#pl").classList.toggle("muted", pv.muted); });
+const plSeekTo = e => { const r = $("#plSeek").getBoundingClientRect(); pv.currentTime = Math.min(Math.max(0, (e.clientX - r.left) / r.width), 1) * (pv.duration || 0); plDraw(); };
+$("#plSeek").addEventListener("pointerdown", e => { $("#plSeek").setPointerCapture(e.pointerId); plSeekTo(e); });
+$("#plSeek").addEventListener("pointermove", e => { if ($("#plSeek").hasPointerCapture(e.pointerId)) plSeekTo(e); });
 
 async function openSettings() {
   const s = await api().get_settings();

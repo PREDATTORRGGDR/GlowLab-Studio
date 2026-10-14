@@ -213,7 +213,7 @@ class Api:
         facts = data.star_facts(o["slug"], s["lang"]) if star else data.my_facts(int(o["analysis_id"]), s["lang"])
         proj = PROJECTS / f"{o['slug'] if star else 'me'}-{time.strftime('%Y%m%d-%H%M%S')}"
         self._progress(0, "Claude пишет текст по цифрам")
-        scenes, tags, problems = script.write(facts, s["lang"], s["claude_model"])
+        scenes, tags, problems = script.write(facts, s["lang"], s["claude_model"], avoid=recent_calls())
         self._progress(1, "Открываю Mini App и снимаю карточки")
         shots = miniapp.shoot(facts, scenes, proj / "shots", lambda: self.stop)
         self.last = {"proj": proj, "facts": facts, "scenes": scenes, "shots": shots, "tags": tags, "asks": [], "o": o,
@@ -267,6 +267,18 @@ class Api:
                               "seconds": round(render.duration(final), 1), "problems": last["problems"],
                               "tags": last["tags"], "asks": last["asks"], "reshot": last["reshot"],
                               "scenes": [{"i": i, "kind": x["kind"], "voice": x["voice"]} for i, x in enumerate(last["scenes"])]}
+
+
+def recent_calls(n: int = 8) -> list[str]:
+    """Calls to the bot from the last n videos: the new script must say it differently."""
+    out = []
+    for f in sorted(PROJECTS.glob("*/project.json"), key=os.path.getmtime, reverse=True)[:n]:
+        try:
+            lines = [x["voice"] for x in json.loads(f.read_text("utf-8"))["scenes"] if x["kind"] == "outro"]
+        except (OSError, ValueError, KeyError):
+            continue
+        out += [v for v in (re.sub(r"(?i)дальше смотрите сами\W*", "", x).strip() for x in lines) if v]
+    return out
 
 
 def human(e: Exception) -> str:
