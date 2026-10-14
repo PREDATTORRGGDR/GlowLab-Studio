@@ -4,99 +4,296 @@
 <meta charset="utf-8">
 <title>GlowLab Studio</title>
 <style>
-  :root { --bg:#0b0b0c; --card:#151517; --line:#26262a; --text:#f2f2f3; --mute:#8b8b93; --y:#ffd400; --ok:#3ddc84; --bad:#ff5c5c; }
+  :root { --bg:#0b0b0c; --card:#141416; --card2:#1b1b1f; --line:#26262b; --text:#f2f2f3; --mute:#8d8d96; --y:#ffd400; --ok:#3ddc84; --bad:#ff6b5c;
+          --head:"Segoe UI", system-ui, sans-serif; }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 "Segoe UI", system-ui, sans-serif; }
-  header { position:sticky; top:0; display:flex; align-items:center; gap:16px; padding:14px 24px; background:rgba(11,11,12,.92); border-bottom:1px solid var(--line); z-index:1; }
-  header h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:.3px; }
-  header h1 b { color:var(--y); }
-  .pill { font-size:13px; color:var(--mute); }
-  .pill::before { content:"●"; margin-right:6px; color:var(--bad); }
-  .pill.on::before { color:var(--ok); }
-  main { max-width:860px; margin:0 auto; padding:24px; display:grid; gap:18px; }
-  section { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px 22px; }
-  h2 { margin:0 0 12px; font-size:16px; }
-  h2 span { color:var(--y); margin-right:8px; }
-  .stub { color:var(--mute); margin:0; }
-  button { font:inherit; border:1px solid var(--line); background:#1f1f23; color:var(--text); border-radius:10px; padding:8px 14px; cursor:pointer; }
-  button:hover { border-color:#3a3a40; }
-  button.main { background:var(--y); color:#111; border:0; font-weight:700; padding:14px 22px; font-size:16px; }
-  .spacer { flex:1; }
-  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:16px; padding:22px; width:min(560px, 92vw); }
-  dialog::backdrop { background:rgba(0,0,0,.6); }
-  label { display:grid; gap:4px; margin-bottom:12px; font-size:13px; color:var(--mute); }
-  input, select { font:inherit; color:var(--text); background:#0f0f11; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
-  input:focus, select:focus { outline:none; border-color:var(--y); }
-  fieldset { border:0; padding:0; margin:0 0 6px; }
-  legend { color:var(--y); font-weight:600; margin-bottom:8px; }
-  .row { display:flex; gap:10px; justify-content:flex-end; margin-top:8px; }
-  .note { font-size:12px; color:var(--mute); margin:-4px 0 14px; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 "Segoe UI", system-ui, sans-serif; }
+  body { background:radial-gradient(1200px 500px at 50% -200px, rgba(255,212,0,.08), transparent 70%), var(--bg); min-height:100vh; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:18px; padding:16px 28px;
+           background:rgba(11,11,12,.85); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  .logo { font-family:var(--head); font-weight:900; font-size:20px; letter-spacing:.5px; color:var(--y); }
+  .logo span { color:var(--text); font-weight:600; margin-left:6px; }
+  .dots { display:flex; gap:14px; margin-left:auto; font-size:12.5px; color:var(--mute); }
+  .dot::before { content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--bad); margin-right:6px; vertical-align:1px; }
+  .dot.on::before { background:var(--ok); }
+  .icon { width:38px; height:38px; border-radius:12px; border:1px solid var(--line); background:var(--card); display:grid; place-items:center; }
+  .icon:hover { border-color:#3a3a42; }
+  main { max-width:880px; margin:0 auto; padding:26px 28px 80px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:22px; padding:22px; }
+  .card h2 { margin:0 0 16px; font:700 13px/1 var(--head); letter-spacing:1.4px; text-transform:uppercase; color:var(--mute); display:flex; align-items:center; gap:10px; }
+  .card h2 b { width:22px; height:22px; border-radius:7px; background:var(--y); color:#111; display:grid; place-items:center; font-size:12px; }
+  .seg { display:inline-flex; background:var(--card2); border:1px solid var(--line); border-radius:14px; padding:4px; margin-bottom:16px; }
+  .seg button { border:0; background:none; padding:8px 18px; border-radius:10px; color:var(--mute); font-weight:600; }
+  .seg button.on { background:var(--y); color:#111; }
+  .field { width:100%; background:#0f0f11; border:1px solid var(--line); border-radius:12px; padding:11px 14px; outline:none; }
+  .field:focus { border-color:var(--y); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:10px; margin-top:14px; max-height:340px; overflow:auto; padding:2px; }
+  .tile { position:relative; border:2px solid transparent; border-radius:16px; overflow:hidden; background:var(--card2); padding:0; text-align:left; }
+  .tile img, .tile video { width:100%; aspect-ratio:1; object-fit:cover; display:block; background:#000; }
+  .tile .cap { padding:8px 10px; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .score { position:absolute; top:8px; right:8px; background:rgba(0,0,0,.7); color:var(--y); font-weight:800; font-size:13px; padding:3px 8px; border-radius:8px; }
+  .tile.on { border-color:var(--y); box-shadow:0 0 0 4px rgba(255,212,0,.12); }
+  .tile.add { display:grid; place-items:center; aspect-ratio:1; border:2px dashed var(--line); color:var(--mute); font-weight:600; }
+  .me { display:flex; gap:18px; align-items:center; }
+  .me img { width:110px; height:110px; border-radius:18px; object-fit:cover; background:#000; }
+  .me .big { font:900 40px/1 var(--head); color:var(--y); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; }
+  .row label { display:grid; gap:5px; font-size:12px; color:var(--mute); flex:1; min-width:120px; }
+  .row label.wide { flex:3; }
+  .ghost { border:1px solid var(--line); background:var(--card2); border-radius:12px; padding:9px 16px; font-weight:600; }
+  .ghost:hover { border-color:#3a3a42; }
+  .go { width:100%; border:0; border-radius:20px; padding:20px; background:var(--y); color:#111; font:900 19px/1 var(--head); letter-spacing:.3px;
+        box-shadow:0 10px 40px rgba(255,212,0,.18); transition:transform .1s, opacity .2s; }
+  .go:hover { transform:translateY(-1px); }
+  .go:disabled { opacity:.35; transform:none; box-shadow:none; cursor:default; }
+  .hint { text-align:center; color:var(--mute); font-size:13px; margin-top:-6px; }
+  .steps { display:grid; gap:10px; }
+  .step { display:flex; align-items:center; gap:12px; color:var(--mute); }
+  .step i { width:24px; height:24px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; font-style:normal; font-size:13px; }
+  .step.now { color:var(--text); } .step.now i { border-color:var(--y); border-top-color:transparent; animation:spin .8s linear infinite; }
+  .step.done i { background:var(--y); border-color:var(--y); color:#111; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .detail { color:var(--mute); font-size:13px; margin:12px 0 0 36px; min-height:18px; }
+  .err { background:rgba(255,107,92,.1); border:1px solid rgba(255,107,92,.4); color:#ffb3a9; border-radius:14px; padding:12px 16px; white-space:pre-wrap; }
+  .result { display:grid; grid-template-columns:300px 1fr; gap:22px; align-items:start; }
+  .result video { width:300px; aspect-ratio:9/16; border-radius:18px; background:#000; }
+  .scene { display:flex; gap:10px; align-items:flex-start; margin-bottom:8px; }
+  .scene small { width:62px; flex:none; color:var(--mute); padding-top:10px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; }
+  .scene textarea { flex:1; resize:vertical; min-height:42px; background:#0f0f11; border:1px solid var(--line); border-radius:10px; padding:9px 11px; outline:none; }
+  .scene textarea:focus { border-color:var(--y); }
+  .scene button { border:0; background:none; color:var(--mute); font-size:18px; padding:8px; }
+  .scene button:hover { color:var(--bad); }
+  .hidden { display:none !important; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:22px; padding:24px; width:min(560px, 92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.65); }
+  dialog label { display:grid; gap:4px; margin-bottom:12px; font-size:12.5px; color:var(--mute); }
+  dialog legend { color:var(--y); font-weight:700; margin-bottom:8px; }
+  dialog fieldset { border:0; padding:0; margin:0 0 6px; }
+  .note { font-size:12px; color:var(--mute); margin:-2px 0 12px; }
+  ::-webkit-scrollbar { width:10px; } ::-webkit-scrollbar-thumb { background:#2a2a30; border-radius:10px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>GlowLab <b>Studio</b></h1>
-  <span id="ff" class="pill">ffmpeg…</span>
-  <span class="spacer"></span>
-  <button onclick="openSettings()">Настройки</button>
+  <div class="logo">GLOWLAB<span>Studio</span></div>
+  <div class="dots"><span id="dFF" class="dot">ffmpeg</span><span id="dCL" class="dot">Claude</span></div>
+  <button class="icon" title="Настройки" onclick="openSettings()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
 </header>
 
 <main>
-  <section><h2><span>1</span>Начало ролика</h2><p class="stub">Эдит, длина, текст поверх.</p></section>
-  <section><h2><span>2</span>Кого разбираем</h2><p class="stub">Звезда или мой анализ.</p></section>
-  <section><h2><span>3</span>Ролик</h2><p class="stub">Сцены, голос, музыка.</p><br><button class="main" disabled>Сделать ролик</button></section>
+  <section class="card">
+    <h2><b>1</b>Кого разбираем</h2>
+    <div class="seg"><button id="tStar" class="on" onclick="setSource('star')">Звезда</button><button id="tMe" onclick="setSource('me')">Мой анализ</button></div>
+    <div id="starBox">
+      <input id="q" class="field" placeholder="Поиск по имени: Brad Pitt, Drake…" oninput="findStars()">
+      <div id="stars" class="grid"></div>
+    </div>
+    <div id="meBox" class="hidden">
+      <div id="me" class="me"></div>
+      <div class="row"><button class="ghost" onclick="loadMe(true)">Обновить из GlowLab</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><b>2</b>Эдит в начале</h2>
+    <div id="edits" class="grid"></div>
+    <div class="row">
+      <label>Начало, сек<input id="start" class="field" type="number" min="0" step="0.5" value="0"></label>
+      <label>Длина, сек<input id="length" class="field" type="number" min="1" step="0.5" value="5"></label>
+      <label class="wide">Подпись<input id="caption" class="field" placeholder="авто: Насколько привлекателен …?"></label>
+      <label>Шрифт<select id="font" class="field"></select></label>
+    </div>
+  </section>
+
+  <button id="go" class="go" disabled onclick="make()">Сделать ролик</button>
+  <div id="hint" class="hint">Выбери, кого разбираем, и эдит</div>
+
+  <section id="progress" class="card hidden">
+    <div id="steps" class="steps"></div>
+    <div id="detail" class="detail"></div>
+    <div class="row"><button class="ghost" id="cancelBtn" onclick="api().cancel()">Отменить</button></div>
+  </section>
+
+  <div id="error" class="err hidden"></div>
+
+  <section id="result" class="card hidden">
+    <h2><b>✓</b>Готово</h2>
+    <div class="result">
+      <video id="player" controls></video>
+      <div>
+        <div id="meta" class="note"></div>
+        <div class="row" style="margin-top:0"><button class="ghost" onclick="api().reveal(state.result.path)">Показать в папке</button>
+          <button class="ghost" onclick="window.scrollTo({top:0, behavior:'smooth'})">Сделать ещё</button></div>
+        <h2 style="margin:22px 0 10px">Текст сцен</h2>
+        <div class="note">Поправь реплику или убери сцену крестиком. Пересобирается только голос и монтаж, экраны те же.</div>
+        <div id="scenes"></div>
+        <button class="ghost" onclick="rerender()">Пересобрать с правками</button>
+      </div>
+    </div>
+  </section>
 </main>
 
 <dialog id="dlg">
   <form id="form" method="dialog">
-    <p class="note">Всё хранится только в settings.json рядом с приложением. Ключи сюда не возвращаются: пустое поле значит «оставить сохранённый».</p>
+    <p class="note">Всё хранится только в settings.json рядом с приложением. Сохранённые ключи сюда не возвращаются: пустое поле значит «оставить как есть».</p>
     <fieldset><legend>Ролик</legend>
-      <label>Язык ролика <select name="lang"><option value="ru">Русский</option><option value="en">English</option><option value="uk">Українська</option></select></label>
+      <label>Язык ролика <select name="lang" class="field"><option value="ru">Русский</option><option value="en">English</option><option value="uk">Українська</option></select></label>
     </fieldset>
     <fieldset><legend>ElevenLabs</legend>
-      <label>Ключ <input name="elevenlabs_key" type="password" autocomplete="off"></label>
-      <label>Голос (voice_id) <input name="voice_id"></label>
+      <label>Ключ <input name="elevenlabs_key" type="password" autocomplete="off" class="field"></label>
+      <label>Голос <select name="voice_id" id="voice" class="field"></select></label>
+      <p class="note">Голоса из библиотеки (не «стандартные») работают через API только на платном тарифе ElevenLabs.</p>
     </fieldset>
     <fieldset><legend>Claude</legend>
-      <p class="note">Сценарий пишет Claude Code из приложения Claude по твоей подписке, ключ не нужен.</p>
-      <label>Модель <input name="claude_model"></label>
+      <p class="note">Текст пишет Claude Code из приложения Claude по твоей подписке, ключ не нужен.</p>
+      <label>Модель <input name="claude_model" class="field"></label>
     </fieldset>
     <fieldset><legend>GlowLab</legend>
-      <label>API_BASE <input name="api_base" placeholder="https://…"></label>
-      <label>Токен бота <input name="bot_token" type="password" autocomplete="off"></label>
-      <label>Мой Telegram id <input name="owner_user_id" inputmode="numeric"></label>
+      <label>API_BASE <input name="api_base" placeholder="https://…" class="field"></label>
+      <label>Токен бота <input name="bot_token" type="password" autocomplete="off" class="field"></label>
+      <label>Мой Telegram id <input name="owner_user_id" inputmode="numeric" class="field"></label>
       <p class="note">Имя, фамилия и username как в твоём Telegram: сервер перезаписывает ими профиль при каждом запросе.</p>
-      <label>first_name <input name="first_name"></label>
-      <label>last_name <input name="last_name"></label>
-      <label>username <input name="username"></label>
+      <label>first_name <input name="first_name" class="field"></label>
+      <label>last_name <input name="last_name" class="field"></label>
+      <label>username <input name="username" class="field"></label>
     </fieldset>
-    <div class="row"><button value="cancel" formnovalidate>Отмена</button><button class="main" id="save" value="save">Сохранить</button></div>
+    <div class="row" style="justify-content:flex-end"><button class="ghost" value="cancel" formnovalidate>Отмена</button><button class="go" style="width:auto;padding:12px 24px;font-size:15px" id="save" value="save">Сохранить</button></div>
   </form>
 </dialog>
 
 <script>
 const $ = s => document.querySelector(s);
 const api = () => window.pywebview.api;
+const STEPS = ["Сценарий", "Съёмка Mini App", "Озвучка и монтаж"];
+const sel = { source: "star", slug: null, name: "", analysis_id: null, edit: null };
+let state = {}, timer = null;
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function ready() {
+  const ok = sel.edit && (sel.source === "star" ? sel.slug : sel.analysis_id);
+  $("#go").disabled = !ok || state.running;
+  $("#hint").textContent = state.running ? "Идёт сборка…" : ok ? `${sel.source === "star" ? sel.name : "Мой анализ"} + ${sel.edit}` : "Выбери, кого разбираем, и эдит";
+}
+
+function setSource(s) {
+  sel.source = s;
+  $("#tStar").classList.toggle("on", s === "star"); $("#tMe").classList.toggle("on", s === "me");
+  $("#starBox").classList.toggle("hidden", s !== "star"); $("#meBox").classList.toggle("hidden", s !== "me");
+  if (s === "me" && !sel.analysis_id) loadMe(false);
+  ready();
+}
+
+async function findStars() {
+  const list = await api().stars($("#q").value);
+  $("#stars").innerHTML = list.map(s => `<button class="tile ${s.slug === sel.slug ? "on" : ""}" data-slug="${esc(s.slug)}" data-name="${esc(s.name)}">
+    <img src="${s.photo}" loading="lazy"><span class="score">${s.score.toFixed(1)}</span><div class="cap">${esc(s.name)}</div></button>`).join("");
+}
+$("#stars").addEventListener("click", e => {
+  const t = e.target.closest(".tile"); if (!t) return;
+  sel.slug = t.dataset.slug; sel.name = t.dataset.name;
+  document.querySelectorAll("#stars .tile").forEach(x => x.classList.toggle("on", x === t)); ready();
+});
+
+async function loadMe(refresh) {
+  $("#me").innerHTML = `<div class="note">${refresh ? "Тяну анализы из GlowLab…" : "Загружаю…"}</div>`;
+  const a = await api().my_latest(refresh);
+  if (a.error) { sel.analysis_id = null; $("#me").innerHTML = `<div class="err">${esc(a.error)}</div>`; return ready(); }
+  sel.analysis_id = a.photo && a.unlocked ? a.id : null;
+  $("#me").innerHTML = `${a.photo ? `<img src="${a.photo}">` : ""}<div><div class="big">${a.overall?.toFixed(1) ?? "—"}</div>
+    <div class="note" style="margin:6px 0 0">Последний анализ · ${esc(a.created_at)}</div>
+    ${!a.unlocked ? `<div class="err" style="margin-top:8px">Разбор закрыт, открой его в Mini App</div>` : !a.photo ? `<div class="err" style="margin-top:8px">У этого анализа нет фото</div>` : ""}</div>`;
+  ready();
+}
+
+async function loadEdits() {
+  const list = await api().edits();
+  if (!list.some(e => e.name === sel.edit)) sel.edit = list.find(e => e.name === store.get("edit"))?.name || list[0]?.name || null;
+  $("#edits").innerHTML = list.map(e => `<button class="tile ${e.name === sel.edit ? "on" : ""}" data-name="${esc(e.name)}">
+    <video src="${e.url}#t=0.5" muted preload="metadata"></video><div class="cap">${esc(e.name)}</div></button>`).join("")
+    + `<button class="tile add" onclick="addEdit()">+ Добавить</button>`;
+  ready();
+}
+$("#edits").addEventListener("click", e => {
+  const t = e.target.closest(".tile:not(.add)"); if (!t) return;
+  sel.edit = t.dataset.name; store.set("edit", sel.edit);
+  document.querySelectorAll("#edits .tile").forEach(x => x.classList.toggle("on", x === t)); ready();
+});
+$("#edits").addEventListener("mouseover", e => e.target.closest(".tile")?.querySelector("video")?.play());
+$("#edits").addEventListener("mouseout", e => e.target.closest(".tile")?.querySelector("video")?.pause());
+async function addEdit() { await api().add_edit(); loadEdits(); }
+
+async function make() {
+  for (const k of ["start", "length", "font"]) store.set(k, $("#" + k).value);
+  await api().make({ ...sel, start: $("#start").value, length: $("#length").value, caption: $("#caption").value.trim(), font: $("#font").value });
+  watch();
+}
+
+async function rerender() {
+  const lines = [...document.querySelectorAll("#scenes .scene")].map(d => ({ i: +d.dataset.i, voice: d.querySelector("textarea").value }));
+  await api().rerender(lines);
+  watch();
+}
+
+function watch() {
+  $("#progress").classList.remove("hidden"); $("#error").classList.add("hidden");
+  $("#progress").scrollIntoView({ behavior: "smooth", block: "center" });
+  clearInterval(timer);
+  timer = setInterval(async () => {
+    state = await api().job_state();
+    $("#steps").innerHTML = STEPS.map((s, i) => `<div class="step ${i < state.step || (!state.running && state.result) ? "done" : i === state.step && state.running ? "now" : ""}"><i>${i < state.step || state.result ? "✓" : ""}</i>${s}</div>`).join("");
+    $("#detail").textContent = state.detail;
+    $("#cancelBtn").classList.toggle("hidden", !state.running);
+    ready();
+    if (state.running) return;
+    clearInterval(timer);
+    if (state.error) { $("#error").textContent = state.error; $("#error").classList.remove("hidden"); $("#progress").classList.add("hidden"); }
+    if (state.result) showResult(state.result);
+  }, 400);
+}
+
+function showResult(r) {
+  $("#progress").classList.add("hidden");
+  $("#result").classList.remove("hidden");
+  $("#player").src = r.url;
+  $("#meta").textContent = `${r.seconds} с · ${r.path}` + (r.problems?.length ? `\nПроверка цифр: ${r.problems.join("; ")}` : "");
+  $("#scenes").innerHTML = r.scenes.map(s => `<div class="scene" data-i="${s.i}"><small>${esc(s.kind)}</small>
+    <textarea rows="1">${esc(s.voice)}</textarea><button title="Убрать сцену" onclick="this.parentElement.remove()">×</button></div>`).join("");
+  $("#result").scrollIntoView({ behavior: "smooth" });
+}
 
 async function openSettings() {
   const s = await api().get_settings();
-  for (const el of $('#form').elements) {
+  for (const el of $("#form").elements) {
     if (!el.name) continue;
-    if (el.type === 'password') { el.value = ''; el.placeholder = s[el.name] ? 'сохранён ' + s[el.name] : 'не задан'; }
-    else el.value = s[el.name] ?? '';
+    if (el.type === "password") { el.value = ""; el.placeholder = s[el.name] ? "сохранён " + s[el.name] : "не задан"; }
+    else if (el.name !== "voice_id") el.value = s[el.name] ?? "";
   }
-  $('#dlg').showModal();
+  const voices = await api().voices();
+  if (!voices.some(v => v.id === s.voice_id)) voices.unshift({ id: s.voice_id, name: s.voice_id, free: false });
+  $("#voice").innerHTML = voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}${v.free ? " · стандартный" : ""}</option>`).join("");
+  $("#voice").value = s.voice_id;
+  $("#dlg").showModal();
 }
-
-$('#form').addEventListener('submit', async e => {
-  if (e.submitter?.value !== 'save') return;
-  await api().save_settings(Object.fromEntries(new FormData($('#form'))));
+$("#form").addEventListener("submit", async e => {
+  if (e.submitter?.value !== "save") return;
+  await api().save_settings(Object.fromEntries(new FormData($("#form"))));
 });
 
-window.addEventListener('pywebviewready', async () => {
+window.addEventListener("pywebviewready", async () => {
   const st = await api().status();
-  $('#ff').classList.toggle('on', st.ffmpeg);
-  $('#ff').textContent = st.ffmpeg ? 'ffmpeg найден' : 'ffmpeg не найден: положи ffmpeg.exe и ffprobe.exe в bin';
+  $("#dFF").classList.toggle("on", st.ffmpeg); $("#dCL").classList.toggle("on", st.claude);
+  $("#dFF").title = st.ffmpeg ? "ffmpeg найден" : "ffmpeg не найден: положи ffmpeg.exe и ffprobe.exe в папку bin";
+  $("#dCL").title = st.claude ? "Claude Code найден" : "Claude Code не найден: установи приложение Claude и войди";
+  $("#font").innerHTML = st.fonts.map(f => `<option>${esc(f)}</option>`).join("");
+  $("#font").value = store.get("font") || (st.fonts.includes("Oswald.ttf") ? "Oswald.ttf" : st.fonts[0] || "");
+  for (const k of ["start", "length"]) if (store.get(k)) $("#" + k).value = store.get(k);
+  findStars(); loadEdits();
 });
 </script>
 </body>

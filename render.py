@@ -7,12 +7,12 @@ from pathlib import Path
 
 import httpx
 
-from app import LIB, load_settings, tool
+from data import LIB, load_settings, tool
 import frames
 
 FPS, W, H = 30, 1080, 1920
 GAP = 0.2            # s of silence after each line: the owner's videos are fast
-ZOOM = 0.04          # slow push-in over a scene: 1.00 -> 1.04
+SPEED = 1.1          # ElevenLabs voice speed (0.7..1.2): the owner wants it a bit faster
 MUSIC, VOICE = 0.45, 1.6   # bed and voice gains before ducking
 VOICE_CACHE = LIB / "voice"
 
@@ -37,13 +37,16 @@ def tts(text: str) -> Path:
     s = load_settings()
     if not s["elevenlabs_key"] or not s["voice_id"]:
         raise RuntimeError("Не хватает ключа ElevenLabs или голоса в настройках")
-    path = VOICE_CACHE / (hashlib.sha1(f"{s['voice_id']}|{text}".encode()).hexdigest()[:16] + ".mp3")
+    path = VOICE_CACHE / (hashlib.sha1(f"{s['voice_id']}|{SPEED}|{text}".encode()).hexdigest()[:16] + ".mp3")
     if not path.exists():
         r = httpx.post(f"https://api.elevenlabs.io/v1/text-to-speech/{s['voice_id']}", timeout=120,
                        headers={"xi-api-key": s["elevenlabs_key"]},
-                       json={"text": text, "model_id": "eleven_multilingual_v2"})
+                       json={"text": text, "model_id": "eleven_multilingual_v2",
+                             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75, "speed": SPEED}})
         if r.status_code == 401:
             raise RuntimeError("ElevenLabs не принял ключ")
+        if r.status_code == 402:
+            raise RuntimeError("Этот голос из библиотеки ElevenLabs работает только на платном тарифе. Выбери стандартный голос в настройках или пополни ElevenLabs")
         if r.status_code >= 400:
             raise RuntimeError(f"ElevenLabs ответил {r.status_code}: {r.text[:200]}")
         VOICE_CACHE.mkdir(parents=True, exist_ok=True)
@@ -61,8 +64,7 @@ def intro_clip(edit: Path, start: float, length: float, caption: Path, voice: Pa
 
 
 def scene_clip(png: Path, voice: Path, length: float, out: Path, log: Path) -> None:
-    vf = (f"[0:v]scale=w='{W}*(1+{ZOOM}*t/{length})':h=-2:eval=frame,crop={W}:{H},fps={FPS},format=yuv420p[v];"
-          f"[1:a]apad,atrim=0:{length}[a]")
+    vf = f"[0:v]scale={W}:{H},fps={FPS},format=yuv420p[v];[1:a]apad,atrim=0:{length}[a]"
     run([tool("ffmpeg"), "-y", "-loop", "1", "-t", length, "-i", png, "-i", voice,
          "-filter_complex", vf, "-map", "[v]", "-map", "[a]", "-t", length,
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", out], log)

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from app import LIB
+from data import LIB
 
 W, H = 1080, 1920
 DEFAULT_FONT = LIB / "fonts" / "Oswald.ttf"  # condensed caps, like the captions in the owner's videos

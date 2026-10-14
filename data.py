@@ -1,19 +1,47 @@
-"""Data in: the local star catalog and my analyses from the live GlowLab API (GET only).
-Data out: one "facts" dict, the only source of numbers for the script and the frames."""
+"""Data in: settings, the local star catalog and my analyses from the live GlowLab API (GET only).
+Data out: one "facts" dict, the only source of numbers for the script."""
 import hashlib
 import hmac
 import json
+import shutil
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
 
-from app import LIB, ROOT, load_settings
+ROOT = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent  # user data lives here
+BUNDLE = Path(getattr(sys, "_MEIPASS", ROOT))  # read-only files shipped inside the exe
+LIB = ROOT / "library"
+PROJECTS = ROOT / "projects"
+SETTINGS = ROOT / "settings.json"
+SECRETS = ("elevenlabs_key", "bot_token")
+DEFAULTS = {
+    "claude_model": "claude-sonnet-5-5",
+    "elevenlabs_key": "", "voice_id": "3EuKHIEZbSzrHGNmdYsx", "lang": "ru",  # Nikolay: needs a paid ElevenLabs plan
+    "api_base": "", "bot_token": "", "owner_user_id": "", "first_name": "", "last_name": "", "username": "",
+}
+for d in ("edits", "fonts", "music", "stars", "analyses"):
+    (LIB / d).mkdir(parents=True, exist_ok=True)
+PROJECTS.mkdir(exist_ok=True)
+
+
+def load_settings() -> dict:
+    try:
+        return {**DEFAULTS, **json.loads(SETTINGS.read_text("utf-8"))}
+    except (OSError, ValueError):
+        return dict(DEFAULTS)
+
+
+def tool(name: str) -> str | None:
+    local = ROOT / "bin" / f"{name}.exe"
+    return str(local) if local.exists() else shutil.which(name)
+
 
 STARS = LIB / "stars"
 ANALYSES = LIB / "analyses"
-METRICS = json.loads((ROOT / "metrics.json").read_text("utf-8"))
+METRICS = json.loads((BUNDLE / "metrics.json").read_text("utf-8"))
 LANGS = ("ru", "en", "uk")
 STRONG, WEAK = 7.5, 5.0  # metric verdict: score >= STRONG strong, score < WEAK weak
 # miniapp/src/main.tsx `archetypes`, ru / en / uk

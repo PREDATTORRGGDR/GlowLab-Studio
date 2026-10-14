@@ -8,7 +8,7 @@ from urllib.parse import quote
 from playwright.sync_api import sync_playwright
 
 import data
-from app import load_settings
+from data import load_settings
 
 VIEW = {"width": 405, "height": 720}  # 9:16; times SCALE gives 1080x1920
 SCALE = 1080 / 405
