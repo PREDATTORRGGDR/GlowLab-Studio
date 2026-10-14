@@ -8,7 +8,7 @@
 
 ## Требования
 
-Windows 11, Python 3.11+, ffmpeg и ffprobe (в PATH или в папке `bin\`), десктопное приложение Claude с подпиской.
+Windows 11, Python 3.11+, ffmpeg и ffprobe (в PATH или в папке `bin\`), десктопное приложение Claude с подпиской, Microsoft Edge (кадры ролика это скриншоты твоего Mini App, он открывается в скрытом Edge только на чтение).
 
 ## Установка и запуск
 
