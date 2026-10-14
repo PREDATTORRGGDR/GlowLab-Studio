@@ -47,7 +47,12 @@ python app.py
 
 ## Сборка exe
 
-Будет добавлено: `build.bat`.
+```
+pip install -r requirements.txt pyinstaller
+build.bat
+```
+
+Появится `GlowLabStudio.exe` в корне проекта. Его нужно держать рядом с `library\`, `projects\` и `settings.json`: оттуда он берёт эдиты, ключи и туда кладёт ролики. Запуск занимает несколько секунд, exe распаковывается.
 
 ## Лицензия
 
