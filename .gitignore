@@ -11,3 +11,5 @@ dist/
 *.mp3
 *.log
 .claude/
+AGENTS.md
+CLAUDE.md
