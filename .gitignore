@@ -1,0 +1,13 @@
+settings.json
+library/
+projects/
+bin/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+*.spec
+*.mp4
+*.mp3
+*.log
+.claude/
