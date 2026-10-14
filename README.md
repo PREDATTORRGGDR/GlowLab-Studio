@@ -22,7 +22,7 @@ python app.py
 | Что | Папка |
 |---|---|
 | Эдиты со знаменитостями (mp4) | `library\edits` |
-| Шрифты для текста (.ttf) | `library\fonts` |
+| Шрифты для текста (.ttf с кириллицей; по умолчанию Montserrat) | `library\fonts` |
 | Фоновая музыка | `library\music` |
 | ffmpeg.exe, ffprobe.exe (если их нет в PATH) | `bin\` |
 
