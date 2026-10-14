@@ -5,6 +5,16 @@ from urllib.parse import parse_qsl
 
 import app
 import data
+import script
+
+
+def test_script_check_catches_invented_numbers():
+    f = data.star_facts("drake")
+    m = f["metrics"][0]
+    good = {"kind": "metric", "ref": m["key"], "title": "x", "voice": f"Плохо: {m['score']:.1f} из 10".replace(".", ","), "highlight": []}
+    bad = {"kind": "section", "ref": "harmony_front", "title": "x", "voice": "Гармония 123,4 из 10", "highlight": ["nope"]}
+    assert script.check(f, [good]) == []
+    assert script.check(f, [bad]) == ["сцена 1: число 123.4 не из фактов"] and bad["highlight"] == []
 
 
 def test_init_data_passes_server_check():

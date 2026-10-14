@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from app import LIB, ROOT
+from data import section_score
 
 W, H = 1080, 1920
 YEL, WHITE, MUTE = (255, 212, 0), (245, 245, 247), (160, 160, 170)
@@ -15,7 +16,28 @@ WORDS = {  # ru / en / uk
     "angularity": ("Угловатость", "Angularity", "Кутастість"), "features": ("Черты", "Features", "Риси"),
     "skin": ("Кожа", "Skin", "Шкіра"), "overall": ("Общий балл", "Overall", "Загальний бал"),
     "front": ("Анфас", "Front", "Анфас"), "side": ("Профиль", "Profile", "Профіль"),
+    "harmony_front": ("Гармония анфаса", "Front harmony", "Гармонія анфасу"),
+    "harmony_side": ("Гармония профиля", "Profile harmony", "Гармонія профілю"),
+    # miniapp markup.ts RESULT_COPY: scoreWord and normVerdict
+    "ideal": ("Идеал", "Ideal", "Ідеал"), "great": ("Отлично", "Great", "Відмінно"), "good": ("Хорошо", "Good", "Добре"),
+    "fair": ("Средне", "Fair", "Середньо"), "weak": ("Слабо", "Weak", "Слабко"),
+    "in_ideal": ("в идеале", "ideal", "в ідеалі"), "norm": ("в норме", "in range", "в нормі"),
+    "below": ("ниже нормы", "below range", "нижче норми"), "above": ("выше нормы", "above range", "вище норми"),
+    "ideal_is": ("идеал", "ideal", "ідеал"),
 }
+
+
+def score_word(s: float) -> str:  # miniapp scoreWord
+    return "ideal" if s >= 9.95 else "great" if s >= 8 else "good" if s >= 6 else "fair" if s >= 4 else "weak"
+
+
+def norm_verdict(band: list, v: float) -> str:  # miniapp normVerdict
+    _, a5, lo, hi, b5, _ = band
+    if (a5 is None or v >= lo) and v <= hi:
+        return "in_ideal"
+    if (a5 is None or v >= a5) and v <= b5:
+        return "norm"
+    return "below" if v < lo else "above"
 DEFAULT_FONT = LIB / "fonts" / "Montserrat.ttf"
 ZOOM = 1.45  # face crop: markup points bbox times this
 
@@ -77,9 +99,7 @@ def face(facts: dict, side: str, keys: list[str], box: tuple[int, int, int, int]
     s = img.width / 1000  # line widths relative to the photo size
     d = ImageDraw.Draw(img, "RGBA")
     r = max(3, 5 * s)
-    for x, y in pts.values():
-        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 150))
-    for key in keys:
+    for key in keys:  # like the Mini App metric sheet: only this metric's points and lines
         for line in LINES.get(key, []):
             xy = [pts[p] for p in line if p in pts]
             if len(xy) > 1:
@@ -120,7 +140,7 @@ def score_ring(d, cx: int, cy: int, r: int, score: float, f_big, color=YEL) -> N
 def frame(facts: dict, scene: dict, out: Path, font_path=None, lang: str = "ru") -> Path:
     i = ("ru", "en", "uk").index(lang) if lang in ("ru", "en", "uk") else 0
     metric = next((m for m in facts["metrics"] if m["key"] == scene.get("ref")), None) if scene["kind"] == "metric" else None
-    side = metric["side"] if metric else "front"
+    side = metric["side"] if metric else "side" if scene.get("ref") == "harmony_side" else "front"
     img = background(facts["photos"]["front"])
     d = ImageDraw.Draw(img, "RGBA")
 
@@ -141,15 +161,19 @@ def frame(facts: dict, scene: dict, out: Path, font_path=None, lang: str = "ru")
         unit = {"deg": "°", "%": "%", "x": "x"}.get(metric["unit"], "")
         value = f"{metric['value']:.2f}" if metric["unit"] == "x" else f"{metric['value']:.1f}"
         d.text((120, top + 190), value + unit, font=font(font_path, 64, "Bold"), fill=MUTE, anchor="lm")
-        d.text((W - 120, top + 190), f"{fmt(metric['score'])} / 10", font=font(font_path, 84), fill=color, anchor="rm")
-        if metric.get("band"):
-            scale_bar(d, 120, top + 300, W - 240, metric["band"], metric["value"], color)
+        d.text((W - 120, top + 170), f"{fmt(metric['score'])} / 10", font=font(font_path, 84), fill=color, anchor="rm")
+        d.text((W - 120, top + 240), WORDS[score_word(metric["score"])][i], font=font(font_path, 36, "SemiBold"), fill=color, anchor="rm")
+        band = metric.get("band")
+        if band and len(band) == 6:
+            scale_bar(d, 120, top + 290, W - 240, band, metric["value"], color)
+            ideal = f"{WORDS['ideal_is'][i]} {band[2]:g} … {band[3]:g}{unit.strip('x')},{WORDS[norm_verdict(band, metric['value'])][i]}"
+            d.text((120, top + 350), ideal, font=font(font_path, 32, "Medium"), fill=MUTE, anchor="lm")
     elif scene["kind"] in ("section", "verdict"):
         ref = scene.get("ref") or ""
         if scene["kind"] == "verdict":
             score, label = (facts["overall"], WORDS["overall"][i]) if facts["overall"] is not None else (facts["harmony"]["total"], WORDS["harmony"][i])
         else:
-            score, label = facts["sections"].get(ref) or facts["harmony"]["total"], WORDS.get(ref, WORDS["harmony"])[i]
+            score, label = section_score(facts, ref), WORDS.get(ref, WORDS["harmony"])[i]
         cy = bottom + 330
         score_ring(d, W // 2, cy, 230, score or 0, font(font_path, 150, "Black"))
         y = centered(d, cy + 280, label.upper(), font(font_path, 56, "Bold"), YEL)

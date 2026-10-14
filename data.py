@@ -74,6 +74,13 @@ def facts(subject: dict, markup: dict, photos: dict, lang: str, extra: dict | No
     }
 
 
+def section_score(facts: dict, ref: str):
+    """Score behind a section scene: harmony_front / harmony_side / overall / a rubric section."""
+    if ref.startswith("harmony_"):
+        return facts["harmony"].get(ref[8:])
+    return facts["overall"] if ref == "overall" else facts["sections"].get(ref)
+
+
 # ---------- live GlowLab API, GET only ----------
 
 def init_data(bot_token: str, user_id: int, first_name: str = "", username: str = "", lang: str = "ru", last_name: str = "") -> str:

@@ -8,7 +8,7 @@
 
 ## Требования
 
-Windows 11, Python 3.11+, ffmpeg и ffprobe (в PATH или в папке `bin\`).
+Windows 11, Python 3.11+, ffmpeg и ffprobe (в PATH или в папке `bin\`), десктопное приложение Claude с подпиской.
 
 ## Установка и запуск
 
@@ -35,7 +35,7 @@ python app.py
 | Поле | Зачем |
 |---|---|
 | Ключ ElevenLabs, voice_id | Озвучка |
-| Ключ Anthropic (необязательно), модель | Сценарий |
+| Модель Claude | Сценарий. Пишется через Claude Code из десктопного приложения Claude по подписке, ключ API не нужен. Один раз войди: запусти `claude.exe` из `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\<версия>\` и выполни `/login` |
 | API_BASE, токен бота, Telegram id, first_name, last_name, username | Вход в GlowLab, чтобы получить твои анализы (только чтение). Имя, фамилия и username точно как в Telegram: сервер обновляет ими профиль |
 
 ## Сборка exe

@@ -9,9 +9,9 @@ ROOT = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__
 UI = Path(getattr(sys, "_MEIPASS", ROOT)) / "ui" / "index.html"
 LIB = ROOT / "library"
 SETTINGS = ROOT / "settings.json"
-SECRETS = ("anthropic_key", "elevenlabs_key", "bot_token")
+SECRETS = ("elevenlabs_key", "bot_token")
 DEFAULTS = {
-    "anthropic_key": "", "claude_model": "claude-sonnet-5-5",
+    "claude_model": "claude-sonnet-5-5",
     "elevenlabs_key": "", "voice_id": "", "lang": "ru",
     "api_base": "", "bot_token": "", "owner_user_id": "", "first_name": "", "last_name": "", "username": "",
 }
