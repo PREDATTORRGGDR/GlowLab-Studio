@@ -1,10 +1,13 @@
 import hashlib
 import hmac
 import json
+import subprocess
 from urllib.parse import parse_qsl
 
 import app
 import data
+import miniapp
+import render
 import script
 
 
@@ -63,6 +66,32 @@ def test_star_facts_shape():
     for m in f["metrics"]:
         assert m["verdict"] == ("strong" if m["score"] >= 7.5 else "weak" if m["score"] < 5 else "ok")
     assert min(by_key[k]["score"] for k in f["strengths"]) >= max(by_key[k]["score"] for k in f["weaknesses"])
+
+
+def test_harmony_view_skips_switch_that_is_greyed_out():
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="msedge", headless=True)
+        page = browser.new_page()
+        page.set_content('<meta charset="utf-8"><button>Анфас</button><button disabled>Профиль</button>')
+        star = {"subject": {"source": "star"}}
+        assert miniapp.harmony_view(page, star, "front") is True
+        assert miniapp.harmony_view(page, star, "side") is False  # no profile: no timeout on a disabled click
+        browser.close()
+
+
+def test_outro_scrolls_one_list_when_no_profile(tmp_path):
+    from PIL import Image
+    tall, nav = tmp_path / "front.png", tmp_path / "nav.png"
+    Image.new("RGB", (render.W, 2600), "gray").save(tall)
+    Image.new("RGBA", (render.W, 300), "black").save(nav)
+    voices = [tmp_path / f"{i}.wav" for i in range(2)]
+    for v in voices:
+        subprocess.run([render.tool("ffmpeg"), "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", v],
+                       check=True, capture_output=True)
+    out = tmp_path / "outro.mp4"
+    render.outro_clip({"tall": [tall], "y0": [100], "nav": nav}, voices, out, tmp_path / "ffmpeg.log")
+    assert abs(render.duration(out) - 2 * (1 + render.GAP)) < 0.3  # the one list fills the whole closing lines
 
 
 def test_settings_keep_secret_and_mask(tmp_path, monkeypatch):

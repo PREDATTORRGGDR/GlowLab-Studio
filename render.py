@@ -74,17 +74,19 @@ def scene_clip(png: Path, voice: Path, length: float, out: Path, log: Path) -> N
 
 def outro_clip(shot: dict, voices: list[Path], out: Path, log: Path) -> None:
     """A screen-recording look for the closing lines: the front metric list scrolls to its end, then the profile
-    one, the tab bar stays at the bottom; the closing lines play one after another over it."""
+    one (if there is one), the tab bar stays at the bottom; the closing lines play one after another over it."""
     lens = [duration(v) + GAP for v in voices]
-    half = sum(lens) / 2
+    seg = sum(lens) / len(shot["tall"])  # each list gets an equal share of the closing lines
     parts, args = [], []
     for k, (tall, y0) in enumerate(zip(shot["tall"], shot["y0"])):
-        dist = min(PAN * half, max(0, Image.open(tall).height - H - y0))  # to the end of the list, not faster than PAN
-        ease = f"(3*pow(t/{half:.3f},2)-2*pow(t/{half:.3f},3))"  # smoothstep: speeds up, glides, slows down at the end
-        parts.append(f"[{k}:v]fps={FPS},crop={W}:{H}:0:'{y0}+{dist:.0f}*{ease}',trim=0:{half},setpts=PTS-STARTPTS[p{k}]")
-        args += ["-loop", "1", "-framerate", FPS, "-t", half, "-i", tall]
-    audio = "".join(f"[{3 + k}:a]apad,atrim=0:{n}[a{k}];" for k, n in enumerate(lens))
-    fc = (";".join(parts) + f";[p0][p1]concat=n=2:v=1:a=0[page];[page][2:v]overlay=0:H-h,format=yuv420p[v];"
+        dist = min(PAN * seg, max(0, Image.open(tall).height - H - y0))  # to the end of the list, not faster than PAN
+        ease = f"(3*pow(t/{seg:.3f},2)-2*pow(t/{seg:.3f},3))"  # smoothstep: speeds up, glides, slows down at the end
+        parts.append(f"[{k}:v]fps={FPS},crop={W}:{H}:0:'{y0}+{dist:.0f}*{ease}',trim=0:{seg},setpts=PTS-STARTPTS[p{k}]")
+        args += ["-loop", "1", "-framerate", FPS, "-t", seg, "-i", tall]
+    n = len(parts)  # inputs: the tall images, then the tab bar, then the voices
+    audio = "".join(f"[{n + 1 + k}:a]apad,atrim=0:{m}[a{k}];" for k, m in enumerate(lens))
+    pages = "".join(f"[p{k}]" for k in range(n))
+    fc = (";".join(parts) + f";{pages}concat=n={n}:v=1:a=0[page];[page][{n}:v]overlay=0:H-h,format=yuv420p[v];"
           + audio + "".join(f"[a{k}]" for k in range(len(lens))) + f"concat=n={len(lens)}:v=0:a=1[a]")
     run([tool("ffmpeg"), "-y", *args, "-i", shot["nav"], *[x for v in voices for x in ("-i", v)],
          "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", sum(lens),

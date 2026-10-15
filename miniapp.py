@@ -49,11 +49,16 @@ def open_subject(page, facts: dict) -> None:
         page.locator("button.shotTile").first.wait_for(timeout=15000)
 
 
-def harmony_view(page, facts: dict, side: str) -> None:
+def harmony_view(page, facts: dict, side: str) -> bool:
+    """False when this side has no photo or metrics: the Mini App greys its switch out, so nothing is clicked."""
     if facts["subject"]["source"] == "me":
         click(page, page.locator("button:not(.tab)", has_text=re.compile("^Разбор$")))
-    click(page, page.locator("button:not(.tab)", has_text=re.compile("^" + ("Анфас" if side == "front" else "Профиль"))))
+    switch = page.locator("button:not(.tab)", has_text=re.compile("^" + ("Анфас" if side == "front" else "Профиль")))
+    if switch.first.is_disabled():
+        return False
+    click(page, switch)
     to_top(page)
+    return True
 
 
 def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | dict | None:
@@ -70,7 +75,8 @@ def scene_shot(page, facts: dict, scene: dict, out: Path) -> Path | dict | None:
     elif kind == "outro":  # "see for yourself": the metric lists scroll by, like a screen recording
         return scroll_shot(page, facts, out)
     elif ref in ("harmony_front", "harmony_side", "harmony") or facts["subject"]["source"] == "star":
-        harmony_view(page, facts, "side" if ref == "harmony_side" else "front")
+        if not harmony_view(page, facts, "side" if ref == "harmony_side" else "front"):
+            return None  # no profile for this section: the scene is dropped, not shot from the front
         page.screenshot(path=out)
     else:  # overall, rubric sections, verdict of my analysis: the overview tab
         click(page, page.locator("button:not(.tab)", has_text=re.compile("^Обзор$")))
@@ -89,10 +95,11 @@ FIXED_BAR = """() => { let e = document.querySelector('button.tab');
 
 def scroll_shot(page, facts: dict, out: Path) -> dict:
     """Front and profile pages as tall images plus the bottom tab bar on its own: render.py scrolls down the front
-    metric list, then the profile one, and keeps the bar in place. y0: where each metric list starts, output px."""
+    metric list, then the profile one (only if there is one), and keeps the bar in place. y0: where each list starts, output px."""
     talls, y0s = [], []
     for side in ("front", "side"):
-        harmony_view(page, facts, side)
+        if not harmony_view(page, facts, side):
+            continue
         bar = page.evaluate_handle(FIXED_BAR)
         if side == "front":
             top = bar.evaluate("e => e ? e.getBoundingClientRect().top : innerHeight")
