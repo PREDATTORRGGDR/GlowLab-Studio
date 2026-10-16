@@ -9,6 +9,7 @@ import data
 import miniapp
 import render
 import script
+import tiktok
 
 
 def test_script_check_catches_invented_numbers():
@@ -102,3 +103,49 @@ def test_settings_keep_secret_and_mask(tmp_path, monkeypatch):
     shown = api.save_settings({"bot_token": "", "voice_id": "v2"})  # empty secret keeps the saved one
     assert data.load_settings()["bot_token"] == "123:SECRET9876"
     assert shown["bot_token"] == "••••9876" and shown["voice_id"] == "v2"
+
+
+def test_dropped_files_copy_only_videos(tmp_path, monkeypatch):
+    # dragged onto the window: videos go to library\edits, anything else stays where it is
+    monkeypatch.setattr(app, "LIB", tmp_path / "lib")
+    (tmp_path / "lib" / "edits").mkdir(parents=True)
+    src = tmp_path / "src"
+    src.mkdir()
+    for name in ("a.mp4", "C.MOV", "note.txt"):
+        (src / name).write_bytes(b"x")
+    app.Api()._copy_videos([str(src / n) for n in ("a.mp4", "C.MOV", "note.txt", "missing.webm")] + [str(src)])
+    assert sorted(p.name for p in (tmp_path / "lib" / "edits").iterdir()) == ["C.MOV", "a.mp4"]
+
+
+def test_hashtags_compared_as_whole_words():
+    # #mog is not in the caption just because #mogg is: the Tampermonkey script matched by substring
+    assert tiktok.missing("hi #mogg", ["#mog", "#mogg", "#Mog", "#fyp"]) == ["#mog", "#fyp"]
+    assert tiktok.missing("#Mog #fyp.", ["mog", "#FYP", "#edit"]) == ["#edit"]
+
+
+class FakeTikTok:
+    def __init__(self, caption):
+        self.caption = caption
+
+    def evaluate_js(self, script):
+        return self.caption
+
+
+def test_tiktok_wait_gives_caption_or_stops():
+    api = app.Api()
+    api.tt = FakeTikTok("#a #b")
+    assert api._tt_wait_caption() == "#a #b"
+    api.tt, api.tt_quit = FakeTikTok(None), True  # the field never comes and «Стоп» is pressed
+    assert api._tt_wait_caption() is None and api.tt_msg == "Остановлено: поле описания не дождались"
+
+
+def test_hashtag_job_messages():
+    assert tiktok.describe(None) == {"running": False, "message": ""}
+    job = {"tags": ["#a", "#b"], "total": 2, "skipped": 1, "added": 1, "at": 1, "tag": "#b", "error": "",
+           "stop": False, "running": True}
+    assert tiktok.describe(job) == {"running": True, "message": "2 из 2: #b"}
+    assert tiktok.describe({**job, "running": False, "error": "Не нашли подсказку: #b"})["message"] == \
+        "Не нашли подсказку: #b. Не добавлено: 1 из 2"
+    assert tiktok.describe({**job, "running": False, "stop": True})["message"] == "Остановлено: добавлено 1 из 2"
+    assert tiktok.describe({**job, "running": False, "added": 2, "at": 2})["message"] == \
+        "Готово: добавлено 2, уже были в описании 1"

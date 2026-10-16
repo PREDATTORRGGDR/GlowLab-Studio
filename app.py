@@ -15,14 +15,17 @@ from urllib.parse import quote
 
 import httpx
 import webview
+from webview.dom import DOMEventHandler
 
 import data
 import miniapp
 import render
 import script
+import tiktok
 from data import BUNDLE, DEFAULTS, LIB, PROJECTS, SECRETS, SETTINGS, load_settings, tool
 
 UI = BUNDLE / "ui" / "index.html"
+VERSION = "1.1.0"  # shown in the window title; bump it with each release
 PER_VIDEO = 400  # ElevenLabs characters in one video, about
 
 
@@ -73,6 +76,11 @@ class Api:
         self.job = {"running": False, "step": -1, "detail": "", "error": "", "result": None}
         self.stop = False
         self.last = None  # what the last video was made of: re-render with edited lines reuses its screens
+        self.tt = None  # the TikTok Studio window, None while it is closed
+        self.tt_box = None  # GlowLab's size and place before TikTok split the screen
+        self.tt_msg = ""  # what the app itself reports: waiting for the caption, timeout, errors
+        self.tt_wait = False  # a thread is waiting for the caption field
+        self.tt_quit = False  # «Стоп» pressed
 
     # ---------- settings ----------
     def get_settings(self) -> dict:
@@ -128,9 +136,26 @@ class Api:
     def add_edit(self) -> list[dict]:
         picked = webview.windows[0].create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
                                                        file_types=("Видео (*.mp4;*.mov;*.webm)",))
-        for p in picked or []:
-            shutil.copy2(p, LIB / "edits" / Path(p).name)
+        self._copy_videos(picked or [])
         return self.edits()
+
+    def _copy_videos(self, paths) -> None:
+        """Videos from the dialog or dropped on the window go to library\\edits; anything else is skipped."""
+        for p in paths:
+            src = Path(p)
+            if src.is_file() and src.suffix.lower() in (".mp4", ".mov", ".webm"):
+                shutil.copy2(src, LIB / "edits" / src.name)
+
+    def _on_drop(self, e: dict) -> None:
+        """Files dropped on the window. The copy runs in its own thread, then the page reloads its edit list.
+        Private name on purpose: pywebview exposes only public methods to the page."""
+        paths = [f.get("pywebviewFullPath") or "" for f in (e.get("dataTransfer") or {}).get("files", [])]
+
+        def work():
+            self._copy_videos([p for p in paths if p])
+            webview.windows[0].evaluate_js("loadEdits()")
+
+        threading.Thread(target=work, daemon=True).start()
 
     def delete_edit(self, name: str) -> list[dict]:
         p = LIB / "edits" / Path(name).name  # only a file name: nothing outside library\edits
@@ -183,6 +208,127 @@ class Api:
             return ""
         shutil.copy2(path, target)
         return str(target)
+
+    # ---------- TikTok Studio: its own window beside GlowLab, the owner logs in there by hand ----------
+    def tiktok_open(self) -> None:
+        """TikTok beside GlowLab. Its window is created once and only hidden on close, so the login lives as long as
+        the app runs (in memory: pywebview's private mode, nothing written to disk)."""
+        x, y, w, h = self._tt_split()
+        if self.tt is None:
+            self.tt = webview.create_window("TikTok Studio", tiktok.UPLOAD, x=x, y=y, width=w, height=h, min_size=(600, 500))
+            self.tt.events.closing += self._tt_hiding
+        else:
+            self.tt.move(x, y)
+            self.tt.resize(w, h)
+            self.tt.show()
+
+    def _tt_split(self) -> tuple[int, int, int, int]:
+        """GlowLab takes the left half of its screen, TikTok the right one: they never overlap. GlowLab's own size is
+        remembered on the first split and put back when TikTok is hidden."""
+        main = webview.windows[0]
+        screen = next((s for s in webview.screens if s.x <= main.x < s.x + s.width and s.y <= main.y < s.y + s.height),
+                      webview.screens[0])
+        if self.tt_box is None:
+            self.tt_box = (main.x, main.y, main.width, main.height)
+        height, half = min(main.height, screen.height - 60), screen.width // 2  # 60 px for the taskbar
+        main.resize(half, height)
+        main.move(screen.x, screen.y)
+        return screen.x + half, screen.y, screen.width - half, height
+
+    def _tt_hiding(self) -> bool:
+        """The X on the TikTok window only hides it. Returning False cancels the close; the hide itself runs in its own
+        thread, because this handler runs on the GUI thread."""
+        threading.Thread(target=self._tt_hide, daemon=True).start()
+        return False
+
+    def _tt_hide(self) -> None:
+        self.tt.hide()
+        if self.tt_box:
+            x, y, w, h = self.tt_box
+            main = webview.windows[0]
+            main.resize(w, h)
+            main.move(x, y)
+            self.tt_box = None
+
+    def tiktok_paste(self, path: str) -> dict:
+        """Puts the hashtags of the video at `path` into the TikTok caption, the ones not there yet. The caption field
+        appears only after the owner logs in and uploads the video, so the app waits for it up to TT_WAIT seconds.
+        Nothing is published: the owner presses «Опубликовать» in TikTok Studio."""
+        if not self.tt:
+            return {"error": "Окно TikTok закрыто: нажми «Выложить в TikTok» ещё раз"}
+        proj = Path(path).parent  # only a folder straight under projects\
+        if proj.parent.resolve() != PROJECTS.resolve() or not (proj / "project.json").is_file():
+            return {"error": "Не нашёл хэштеги этого ролика"}
+        tags = json.loads((proj / "project.json").read_text("utf-8")).get("hashtags") or []
+        if not tags:
+            return {"error": "В этом ролике нет хэштегов"}
+        if self.tt_wait:
+            return {"error": "Уже жду поле описания"}
+        try:
+            if (self.tt.evaluate_js(tiktok.STATE_JS) or {}).get("running"):
+                return {"error": "Хэштеги уже вставляются"}
+        except Exception:
+            return {"error": "Окно TikTok не отвечает: открой его снова"}
+        self.tt_msg, self.tt_quit, self.tt_wait = "Жду поле описания: войди в TikTok и загрузи видео сам", False, True
+        threading.Thread(target=self._tt_wait_paste, args=(tags,), daemon=True).start()
+        return {}
+
+    def _tt_wait_paste(self, tags: list[str]) -> None:
+        try:
+            caption = self._tt_wait_caption()
+            if caption is not None:
+                todo = tiktok.missing(caption, tags)
+                if todo:
+                    self.tt_msg = ""
+                    self.tt.evaluate_js(tiktok.job_js(todo, len(tags) - len(todo)))
+                else:
+                    self.tt_msg = "Все хэштеги уже в описании"
+        except Exception:
+            self.tt_msg = "Окно TikTok закрыто: нажми «Выложить в TikTok» ещё раз"
+        finally:
+            self.tt_wait = False
+
+    def _tt_wait_caption(self) -> str | None:
+        """The caption text once the field is on the page; None when stopped, timed out or the window is gone."""
+        deadline = time.time() + tiktok.WAIT
+        while not self.tt_quit:
+            if not self.tt:
+                self.tt_msg = "Окно TikTok закрыто: нажми «Выложить в TikTok» ещё раз"
+                return None
+            try:
+                caption = self.tt.evaluate_js(tiktok.CAPTION_JS)  # None while the page loads or has no editor
+            except Exception:
+                caption = None
+            if caption is not None:
+                return caption
+            if time.time() > deadline:
+                self.tt_msg = (f"Не дождался поля описания за {tiktok.WAIT // 60} мин: загрузи видео в TikTok Studio "
+                               "и нажми «Выложить в TikTok» ещё раз")
+                return None
+            time.sleep(1)
+        self.tt_msg = "Остановлено: поле описания не дождались"
+        return None
+
+    def tiktok_state(self) -> dict:
+        if self.tt_wait:
+            return {"running": True, "message": self.tt_msg}
+        if not self.tt:
+            return {"running": False, "message": self.tt_msg}
+        try:
+            job = self.tt.evaluate_js(tiktok.STATE_JS)
+        except Exception:
+            return {"running": False, "message": "Окно TikTok не отвечает: открой его снова"}
+        if self.tt_msg and not (job or {}).get("running"):
+            return {"running": False, "message": self.tt_msg}
+        return tiktok.describe(job)
+
+    def tiktok_stop(self) -> None:
+        self.tt_quit = True
+        if self.tt:
+            try:
+                self.tt.evaluate_js(tiktok.STOP_JS)
+            except Exception:
+                pass
 
     def _start(self, fn, arg) -> None:
         if self.job["running"]:
@@ -312,8 +458,23 @@ def dark_title(window) -> None:
         pass
 
 
+def wire_drop(w, api: Api) -> None:
+    """Drop handler on the page, attached once after the first load. DOMEventHandler with prevent_default stops the
+    browser from opening the dropped file."""
+    done = []
+
+    def on_loaded():
+        if not done:
+            done.append(True)
+            w.dom.document.events.drop += DOMEventHandler(api._on_drop, True, True)
+
+    w.events.loaded += on_loaded
+
+
 if __name__ == "__main__":
-    w = webview.create_window("GlowLab Studio", str(UI), js_api=Api(), width=1180, height=920, min_size=(900, 700),
+    api = Api()
+    w = webview.create_window(f"GlowLab Studio {VERSION}", str(UI), js_api=api, width=1180, height=920, min_size=(900, 700),
                               background_color="#0b0b0c")
     w.events.shown += lambda: dark_title(w)
+    wire_drop(w, api)
     webview.start()

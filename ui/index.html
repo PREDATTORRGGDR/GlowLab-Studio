@@ -91,6 +91,10 @@
   .tagHead { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; font:700 11px/1 var(--head); letter-spacing:1.2px; text-transform:uppercase; color:var(--mute); }
   .tagHead button { border:0; background:none; color:var(--y); font-size:12.5px; font-weight:600; letter-spacing:0; text-transform:none; padding:2px 0; }
   #tags { font-size:13.5px; line-height:1.5; user-select:all; }
+  .tt { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .tt .ghost { font-size:13px; padding:7px 12px; }
+  .ttNote { font-size:11.5px; color:var(--mute); margin-top:8px; }
+  .ttMsg { font-size:12px; color:var(--y); margin-top:6px; min-height:16px; }
   #meta { white-space:pre-line; margin:8px 0 0; } #meta:empty { display:none; }
   .scene { display:grid; grid-template-columns:58px 1fr 26px; gap:6px; align-items:center; margin-bottom:4px; }
   .scene small { color:var(--mute); font-size:11px; }
@@ -177,6 +181,12 @@
         <div class="tagbox">
           <div class="tagHead"><span>Хэштеги</span><button id="copyBtn" onclick="copyTags()">Скопировать</button></div>
           <div id="tags"></div>
+          <div class="tt">
+            <button class="ghost" onclick="ttPost()">Выложить в TikTok</button>
+            <button class="ghost hidden" id="ttStop" onclick="ttStop()">Стоп</button>
+          </div>
+          <div class="ttNote">TikTok открывается справа от GlowLab. Видео загружаешь и публикуешь сам в TikTok Studio, приложение только вставляет хэштеги.</div>
+          <div id="ttMsg" class="ttMsg"></div>
         </div>
         <div id="meta" class="note"></div>
       </div>
@@ -398,6 +408,22 @@ async function sendAsk() {
   await api().change(t);
   watch();
 }
+
+// ---------- TikTok Studio: its own window, the owner logs in there by hand ----------
+let ttTimer = null;
+async function ttPost() {
+  await api().tiktok_open();
+  const r = await api().tiktok_paste(state.result.path);
+  if (r.error) { $("#ttMsg").textContent = r.error; return; }
+  clearInterval(ttTimer);
+  ttTimer = setInterval(async () => {
+    const s = await api().tiktok_state();
+    $("#ttMsg").textContent = s.message;
+    $("#ttStop").classList.toggle("hidden", !s.running);
+    if (!s.running) clearInterval(ttTimer);
+  }, 500);
+}
+async function ttStop() { await api().tiktok_stop(); }
 
 async function copyTags() {
   const text = $("#tags").textContent;
