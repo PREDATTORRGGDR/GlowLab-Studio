@@ -477,4 +477,5 @@ if __name__ == "__main__":
                               background_color="#0b0b0c")
     w.events.shown += lambda: dark_title(w)
     wire_drop(w, api)
-    webview.start()
+    # The TikTok login is kept on disk in webview_data\ (cookies and site storage): the owner logs in once.
+    webview.start(private_mode=False, storage_path=str(data.ROOT / "webview_data"))

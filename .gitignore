@@ -2,6 +2,7 @@ settings.json
 library/
 projects/
 bin/
+webview_data/
 __pycache__/
 .pytest_cache/
 build/
