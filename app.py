@@ -142,9 +142,9 @@ class Api:
     def _copy_videos(self, paths) -> None:
         """Videos from the dialog or dropped on the window go to library\\edits; anything else is skipped."""
         for p in paths:
-            src = Path(p)
-            if src.is_file() and src.suffix.lower() in (".mp4", ".mov", ".webm"):
-                shutil.copy2(src, LIB / "edits" / src.name)
+            src, dst = Path(p), LIB / "edits" / Path(p).name
+            if src.is_file() and src.suffix.lower() in (".mp4", ".mov", ".webm") and src.resolve() != dst.resolve():
+                shutil.copy2(src, dst)  # a file already in library\edits is not copied onto itself
 
     def _on_drop(self, e: dict) -> None:
         """Files dropped on the window. The copy runs in its own thread, then the page reloads its edit list.

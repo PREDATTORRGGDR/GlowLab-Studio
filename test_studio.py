@@ -117,6 +117,15 @@ def test_dropped_files_copy_only_videos(tmp_path, monkeypatch):
     assert sorted(p.name for p in (tmp_path / "lib" / "edits").iterdir()) == ["C.MOV", "a.mp4"]
 
 
+def test_dropping_an_edit_from_its_own_folder_keeps_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "LIB", tmp_path)
+    (tmp_path / "edits").mkdir()
+    f = tmp_path / "edits" / "a.mp4"
+    f.write_bytes(b"x")
+    app.Api()._copy_videos([str(f)])  # used to raise SameFileError inside the drop thread
+    assert f.read_bytes() == b"x"
+
+
 def test_hashtags_compared_as_whole_words():
     # #mog is not in the caption just because #mogg is: the Tampermonkey script matched by substring
     assert tiktok.missing("hi #mogg", ["#mog", "#mogg", "#Mog", "#fyp"]) == ["#mog", "#fyp"]

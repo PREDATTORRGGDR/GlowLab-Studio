@@ -103,6 +103,8 @@
   .scene button { border:0; background:none; color:var(--mute); font-size:17px; padding:2px; }
   .scene button:hover { color:var(--bad); }
   .hidden { display:none !important; }
+  body.dropping::after { content:"Отпусти видео: добавлю в эдиты"; position:fixed; inset:0; display:grid; place-items:center;
+    background:rgba(0,0,0,.7); color:#fff; font:700 22px var(--head); pointer-events:none; z-index:999; }
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:22px; padding:24px; width:min(560px, 92vw); }
   dialog::backdrop { background:rgba(0,0,0,.65); }
   dialog label { display:grid; gap:4px; margin-bottom:12px; font-size:12.5px; color:var(--mute); }
@@ -389,6 +391,11 @@ function toggleLoop() {
 }
 $("#edits").addEventListener("mouseover", e => e.target.closest(".tile")?.querySelector("video")?.play());
 $("#edits").addEventListener("mouseout", e => e.target.closest(".tile")?.querySelector("video")?.pause());
+// Videos dragged onto the window. The browser fires drop only if dragover is cancelled; the file paths then come from
+// pywebview (its drop handler on the document), and the app copies the videos and calls loadEdits() itself.
+document.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dropping"); });
+document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.body.classList.remove("dropping"); });
+document.addEventListener("drop", () => document.body.classList.remove("dropping"));
 async function addEdit() { await api().add_edit(); loadEdits(); }
 
 async function make() {
