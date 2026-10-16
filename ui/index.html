@@ -305,7 +305,6 @@ $("#edits").addEventListener("click", async e => {
   const t = e.target.closest(".tile:not(.add)"); if (!t) return;
   const name = t.dataset.name;
   if (e.target.closest(".del")) {
-    if (!confirm(`Удалить эдит ${name}?`)) return;
     if (name === sel.edit) {  // the choice moves on to the next edit, or the previous one if it was the last
       const next = t.nextElementSibling?.matches(".tile:not(.add)") ? t.nextElementSibling : t.previousElementSibling;
       sel.edit = next?.dataset.name || null; store.set("edit", sel.edit || "");
